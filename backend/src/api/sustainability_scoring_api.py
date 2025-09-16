@@ -1,0 +1,828 @@
+"""
+Sustainability Scoring and Environmental Impact Analysis API
+Calculates sustainability scores, environmental impact, and provides eco-friendly recommendations
+"""
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import json
+import numpy as np
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
+import os
+import logging
+import math
+
+
+
+# PostgreSQL Database Configuration
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from contextlib import contextmanager
+
+# Database configuration
+DATABASE_CONFIG = {
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'port': os.getenv('DB_PORT', '5432'),
+    'database': os.getenv('DB_NAME', 'harvest_enterprise'),
+    'user': os.getenv('DB_USER', 'postgres'),
+    'password': os.getenv('DB_PASSWORD', 'K@shmir2442')
+}
+
+@contextmanager
+def get_db_connection():
+    """Get PostgreSQL database connection with proper error handling"""
+    conn = None
+    try:
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        conn.autocommit = False
+        yield conn
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise e
+    finally:
+        if conn:
+            conn.close()
+
+@contextmanager
+def get_db_cursor():
+    """Get PostgreSQL database cursor with proper error handling"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            yield cursor, conn
+        finally:
+            cursor.close()
+
+
+# Fix import paths for direct execution
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+
+app = Flask(__name__)
+CORS(app)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Database setup
+# DB_NAME replaced with DATABASE_CONFIG
+
+# Sustainability factors and weights
+SUSTAINABILITY_FACTORS = {
+    'water_usage': {
+        'weight': 0.25,
+        'optimal_range': (0, 500),  # mm per season
+        'critical_threshold': 1000
+    },
+    'carbon_footprint': {
+        'weight': 0.20,
+        'optimal_range': (0, 2),  # kg CO2 per kg produce
+        'critical_threshold': 5
+    },
+    'soil_health': {
+        'weight': 0.20,
+        'optimal_range': (70, 100),  # soil health score
+        'critical_threshold': 50
+    },
+    'biodiversity': {
+        'weight': 0.15,
+        'optimal_range': (60, 100),  # biodiversity index
+        'critical_threshold': 30
+    },
+    'chemical_usage': {
+        'weight': 0.10,
+        'optimal_range': (0, 2),  # kg per hectare
+        'critical_threshold': 10
+    },
+    'energy_efficiency': {
+        'weight': 0.10,
+        'optimal_range': (80, 100),  # energy efficiency %
+        'critical_threshold': 50
+    }
+}
+
+# Crop sustainability profiles
+CROP_SUSTAINABILITY_PROFILES = {
+    'Rice': {
+        'water_usage': 800,  # mm per season
+        'carbon_footprint': 2.5,  # kg CO2 per kg
+        'soil_health_impact': -5,  # negative impact on soil
+        'biodiversity_impact': -10,  # negative impact on biodiversity
+        'chemical_usage': 3.5,  # kg per hectare
+        'energy_efficiency': 75,  # %
+        'sustainability_score': 65,
+        'eco_friendly_alternatives': ['Organic rice', 'System of Rice Intensification (SRI)'],
+        'improvement_suggestions': [
+            'Use drip irrigation to reduce water usage',
+            'Implement crop rotation with legumes',
+            'Use organic fertilizers',
+            'Adopt SRI method for better yield with less water'
+        ]
+    },
+    'Wheat': {
+        'water_usage': 400,
+        'carbon_footprint': 1.8,
+        'soil_health_impact': -2,
+        'biodiversity_impact': -5,
+        'chemical_usage': 2.8,
+        'energy_efficiency': 85,
+        'sustainability_score': 78,
+        'eco_friendly_alternatives': ['Organic wheat', 'No-till wheat'],
+        'improvement_suggestions': [
+            'Practice no-till farming',
+            'Use cover crops',
+            'Implement precision agriculture',
+            'Rotate with nitrogen-fixing crops'
+        ]
+    },
+    'Maize': {
+        'water_usage': 600,
+        'carbon_footprint': 2.2,
+        'soil_health_impact': -3,
+        'biodiversity_impact': -8,
+        'chemical_usage': 4.2,
+        'energy_efficiency': 80,
+        'sustainability_score': 70,
+        'eco_friendly_alternatives': ['Organic maize', 'Intercropped maize'],
+        'improvement_suggestions': [
+            'Intercrop with legumes',
+            'Use biological pest control',
+            'Implement conservation tillage',
+            'Rotate with diverse crops'
+        ]
+    },
+    'Cotton': {
+        'water_usage': 1200,
+        'carbon_footprint': 4.1,
+        'soil_health_impact': -8,
+        'biodiversity_impact': -15,
+        'chemical_usage': 8.5,
+        'energy_efficiency': 70,
+        'sustainability_score': 45,
+        'eco_friendly_alternatives': ['Organic cotton', 'Rain-fed cotton'],
+        'improvement_suggestions': [
+            'Switch to organic cotton farming',
+            'Use drip irrigation',
+            'Implement integrated pest management',
+            'Rotate with nitrogen-fixing crops'
+        ]
+    },
+    'Sugarcane': {
+        'water_usage': 1500,
+        'carbon_footprint': 3.8,
+        'soil_health_impact': -6,
+        'biodiversity_impact': -12,
+        'chemical_usage': 6.2,
+        'energy_efficiency': 65,
+        'sustainability_score': 55,
+        'eco_friendly_alternatives': ['Organic sugarcane', 'Biofuel sugarcane'],
+        'improvement_suggestions': [
+            'Use bagasse for energy generation',
+            'Implement precision irrigation',
+            'Practice crop rotation',
+            'Use organic waste as fertilizer'
+        ]
+    }
+}
+
+# Environmental impact categories
+ENVIRONMENTAL_IMPACTS = {
+    'water_pollution': {
+        'factors': ['fertilizer_runoff', 'pesticide_contamination', 'soil_erosion'],
+        'severity_levels': ['Low', 'Medium', 'High', 'Critical']
+    },
+    'air_pollution': {
+        'factors': ['greenhouse_gas_emissions', 'dust_particulates', 'chemical_vapors'],
+        'severity_levels': ['Low', 'Medium', 'High', 'Critical']
+    },
+    'soil_degradation': {
+        'factors': ['erosion', 'compaction', 'nutrient_depletion', 'chemical_accumulation'],
+        'severity_levels': ['Low', 'Medium', 'High', 'Critical']
+    },
+    'biodiversity_loss': {
+        'factors': ['habitat_destruction', 'pesticide_impact', 'monoculture_effects'],
+        'severity_levels': ['Low', 'Medium', 'High', 'Critical']
+    }
+}
+
+def init_database():
+    """Initialize database tables using PostgreSQL"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+    
+    # Sustainability assessments table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sustainability_assessments (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR NOT NULL,
+            crop_type VARCHAR NOT NULL,
+            farm_area FLOAT NOT NULL,
+            sustainability_score FLOAT NOT NULL,
+            water_usage_score FLOAT NOT NULL,
+            carbon_footprint_score FLOAT NOT NULL,
+            soil_health_score FLOAT NOT NULL,
+            biodiversity_score FLOAT NOT NULL,
+            chemical_usage_score FLOAT NOT NULL,
+            energy_efficiency_score FLOAT NOT NULL,
+            overall_rating VARCHAR NOT NULL,
+            recommendations VARCHAR,
+            assessment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Environmental impact assessments table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS environmental_impacts (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR NOT NULL,
+            crop_type VARCHAR NOT NULL,
+            water_pollution_level VARCHAR NOT NULL,
+            air_pollution_level VARCHAR NOT NULL,
+            soil_degradation_level VARCHAR NOT NULL,
+            biodiversity_loss_level VARCHAR NOT NULL,
+            overall_impact_score FLOAT NOT NULL,
+            mitigation_measures VARCHAR,
+            assessment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Sustainability improvements table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sustainability_improvements (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR NOT NULL,
+            crop_type VARCHAR NOT NULL,
+            improvement_type VARCHAR NOT NULL,
+            description VARCHAR NOT NULL,
+            expected_impact FLOAT NOT NULL,
+            implementation_cost VARCHAR,
+            timeline VARCHAR,
+            status VARCHAR DEFAULT 'pending',
+            created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+                conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+
+# Initialize database
+init_database()
+
+def calculate_sustainability_score(crop_data: Dict, farm_conditions: Dict) -> Dict:
+    """Calculate comprehensive sustainability score"""
+    try:
+        crop_type = crop_data.get('crop_type', 'Rice')
+        farm_area = farm_conditions.get('farm_area', 1.0)  # hectares
+        
+        # Get crop sustainability profile
+        crop_profile = CROP_SUSTAINABILITY_PROFILES.get(crop_type, CROP_SUSTAINABILITY_PROFILES['Rice'])
+        
+        # Calculate individual factor scores
+        factor_scores = {}
+        total_weighted_score = 0
+        
+        for factor, config in SUSTAINABILITY_FACTORS.items():
+            if factor in crop_profile:
+                value = crop_profile[factor]
+                optimal_range = config['optimal_range']
+                weight = config['weight']
+                
+                # Calculate score based on how close to optimal range
+                if optimal_range[0] <= value <= optimal_range[1]:
+                    score = 100  # Perfect score
+                elif value < optimal_range[0]:
+                    # Below optimal - calculate based on distance
+                    distance = optimal_range[0] - value
+                    max_distance = optimal_range[0] * 2  # Assume 2x as max distance
+                    score = max(0, 100 - (distance / max_distance) * 100)
+                else:
+                    # Above optimal - calculate based on distance
+                    distance = value - optimal_range[1]
+                    max_distance = optimal_range[1] * 2
+                    score = max(0, 100 - (distance / max_distance) * 100)
+                
+                factor_scores[factor] = round(score, 1)
+                total_weighted_score += score * weight
+        
+        # Calculate overall sustainability score
+        overall_score = round(total_weighted_score, 1)
+        
+        # Determine rating
+        if overall_score >= 90:
+            rating = 'Excellent'
+        elif overall_score >= 80:
+            rating = 'Good'
+        elif overall_score >= 70:
+            rating = 'Fair'
+        elif overall_score >= 60:
+            rating = 'Poor'
+        else:
+            rating = 'Critical'
+        
+        # Generate recommendations
+        recommendations = generate_sustainability_recommendations(crop_type, factor_scores, overall_score)
+        
+        return {
+            'overall_score': overall_score,
+            'rating': rating,
+            'factor_scores': factor_scores,
+            'recommendations': recommendations,
+            'crop_profile': crop_profile
+        }
+        
+    except Exception as e:
+        logger.error(f"Sustainability score calculation error: {str(e)}")
+        return {
+            'overall_score': 0,
+            'rating': 'Unknown',
+            'factor_scores': {},
+            'recommendations': ['Unable to calculate sustainability score'],
+            'crop_profile': {}
+        }
+
+def calculate_environmental_impact(crop_data: Dict, farm_conditions: Dict) -> Dict:
+    """Calculate environmental impact assessment"""
+    try:
+        crop_type = crop_data.get('crop_type', 'Rice')
+        farm_area = farm_conditions.get('farm_area', 1.0)
+        
+        crop_profile = CROP_SUSTAINABILITY_PROFILES.get(crop_type, CROP_SUSTAINABILITY_PROFILES['Rice'])
+        
+        # Calculate impact levels for each category
+        impact_levels = {}
+        impact_scores = {}
+        
+        # Water pollution assessment
+        water_pollution_score = 0
+        if crop_profile['chemical_usage'] > 5:
+            water_pollution_score += 3
+        if crop_profile['water_usage'] > 1000:
+            water_pollution_score += 2
+        
+        water_pollution_level = get_impact_level(water_pollution_score, 5)
+        impact_levels['water_pollution'] = water_pollution_level
+        impact_scores['water_pollution'] = water_pollution_score
+        
+        # Air pollution assessment
+        air_pollution_score = 0
+        if crop_profile['carbon_footprint'] > 3:
+            air_pollution_score += 3
+        if crop_profile['energy_efficiency'] < 70:
+            air_pollution_score += 2
+        
+        air_pollution_level = get_impact_level(air_pollution_score, 5)
+        impact_levels['air_pollution'] = air_pollution_level
+        impact_scores['air_pollution'] = air_pollution_score
+        
+        # Soil degradation assessment
+        soil_degradation_score = 0
+        if crop_profile['soil_health_impact'] < -5:
+            soil_degradation_score += 3
+        if crop_profile['chemical_usage'] > 5:
+            soil_degradation_score += 2
+        
+        soil_degradation_level = get_impact_level(soil_degradation_score, 5)
+        impact_levels['soil_degradation'] = soil_degradation_level
+        impact_scores['soil_degradation'] = soil_degradation_score
+        
+        # Biodiversity loss assessment
+        biodiversity_loss_score = 0
+        if crop_profile['biodiversity_impact'] < -10:
+            biodiversity_loss_score += 3
+        if crop_profile['chemical_usage'] > 5:
+            biodiversity_loss_score += 2
+        
+        biodiversity_loss_level = get_impact_level(biodiversity_loss_score, 5)
+        impact_levels['biodiversity_loss'] = biodiversity_loss_level
+        impact_scores['biodiversity_loss'] = biodiversity_loss_score
+        
+        # Calculate overall impact score
+        overall_impact_score = round(sum(impact_scores.values()) / len(impact_scores), 1)
+        
+        # Generate mitigation measures
+        mitigation_measures = generate_mitigation_measures(crop_type, impact_levels)
+        
+        return {
+            'impact_levels': impact_levels,
+            'impact_scores': impact_scores,
+            'overall_impact_score': overall_impact_score,
+            'mitigation_measures': mitigation_measures
+        }
+        
+    except Exception as e:
+        logger.error(f"Environmental impact calculation error: {str(e)}")
+        return {
+            'impact_levels': {},
+            'impact_scores': {},
+            'overall_impact_score': 0,
+            'mitigation_measures': ['Unable to calculate environmental impact']
+        }
+
+def get_impact_level(score: float, max_score: float) -> str:
+    """Get impact level based on score"""
+    percentage = (score / max_score) * 100
+    
+    if percentage >= 75:
+        return 'Critical'
+    elif percentage >= 50:
+        return 'High'
+    elif percentage >= 25:
+        return 'Medium'
+    else:
+        return 'Low'
+
+def generate_sustainability_recommendations(crop_type: str, factor_scores: Dict, overall_score: float) -> List[str]:
+    """Generate sustainability improvement recommendations"""
+    recommendations = []
+    crop_profile = CROP_SUSTAINABILITY_PROFILES.get(crop_type, CROP_SUSTAINABILITY_PROFILES['Rice'])
+    
+    # Water usage recommendations
+    if factor_scores.get('water_usage', 100) < 70:
+        recommendations.extend([
+            'Implement drip irrigation system',
+            'Use mulching to retain soil moisture',
+            'Practice rainwater harvesting',
+            'Monitor soil moisture levels regularly'
+        ])
+    
+    # Carbon footprint recommendations
+    if factor_scores.get('carbon_footprint', 100) < 70:
+        recommendations.extend([
+            'Use renewable energy sources',
+            'Implement precision agriculture',
+            'Reduce tillage operations',
+            'Use organic fertilizers'
+        ])
+    
+    # Soil health recommendations
+    if factor_scores.get('soil_health', 100) < 70:
+        recommendations.extend([
+            'Practice crop rotation',
+            'Use cover crops',
+            'Implement no-till farming',
+            'Add organic matter to soil'
+        ])
+    
+    # Biodiversity recommendations
+    if factor_scores.get('biodiversity', 100) < 70:
+        recommendations.extend([
+            'Plant hedgerows and windbreaks',
+            'Create wildlife corridors',
+            'Use diverse crop varieties',
+            'Implement agroforestry'
+        ])
+    
+    # Chemical usage recommendations
+    if factor_scores.get('chemical_usage', 100) < 70:
+        recommendations.extend([
+            'Use integrated pest management',
+            'Switch to organic farming',
+            'Use biological pest control',
+            'Practice crop rotation'
+        ])
+    
+    # Energy efficiency recommendations
+    if factor_scores.get('energy_efficiency', 100) < 70:
+        recommendations.extend([
+            'Use energy-efficient equipment',
+            'Optimize irrigation schedules',
+            'Implement solar power',
+            'Use electric vehicles for farm operations'
+        ])
+    
+    # Add crop-specific recommendations
+    recommendations.extend(crop_profile.get('improvement_suggestions', []))
+    
+    return list(set(recommendations))  # Remove duplicates
+
+def generate_mitigation_measures(crop_type: str, impact_levels: Dict) -> List[str]:
+    """Generate environmental impact mitigation measures"""
+    measures = []
+    
+    # Water pollution mitigation
+    if impact_levels.get('water_pollution') in ['High', 'Critical']:
+        measures.extend([
+            'Implement buffer zones around water bodies',
+            'Use precision fertilizer application',
+            'Practice conservation tillage',
+            'Install sediment traps'
+        ])
+    
+    # Air pollution mitigation
+    if impact_levels.get('air_pollution') in ['High', 'Critical']:
+        measures.extend([
+            'Use electric farm equipment',
+            'Implement carbon sequestration practices',
+            'Use renewable energy sources',
+            'Practice no-till farming'
+        ])
+    
+    # Soil degradation mitigation
+    if impact_levels.get('soil_degradation') in ['High', 'Critical']:
+        measures.extend([
+            'Implement soil conservation practices',
+            'Use organic matter amendments',
+            'Practice crop rotation',
+            'Install erosion control structures'
+        ])
+    
+    # Biodiversity loss mitigation
+    if impact_levels.get('biodiversity_loss') in ['High', 'Critical']:
+        measures.extend([
+            'Create wildlife habitats',
+            'Use diverse crop varieties',
+            'Implement agroforestry',
+            'Reduce pesticide usage'
+        ])
+    
+    return measures
+
+def store_sustainability_assessment(user_id: str, crop_type: str, farm_area: float, 
+                                  sustainability_data: Dict, environmental_data: Dict):
+    """Store sustainability assessment in database"""
+    conn = psycopg2.connect(**DATABASE_CONFIG)
+    cursor = conn.cursor()
+    
+    # Store sustainability assessment
+    assessment_id = f"sustainability_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(user_id) % 10000}"
+    
+    cursor.execute('''
+        INSERT INTO sustainability_assessments 
+        (id, user_id, crop_type, farm_area, sustainability_score, water_usage_score,
+         carbon_footprint_score, soil_health_score, biodiversity_score, chemical_usage_score,
+         energy_efficiency_score, overall_rating, recommendations)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        assessment_id, user_id, crop_type, farm_area,
+        sustainability_data['overall_score'],
+        sustainability_data['factor_scores'].get('water_usage', 0),
+        sustainability_data['factor_scores'].get('carbon_footprint', 0),
+        sustainability_data['factor_scores'].get('soil_health', 0),
+        sustainability_data['factor_scores'].get('biodiversity', 0),
+        sustainability_data['factor_scores'].get('chemical_usage', 0),
+        sustainability_data['factor_scores'].get('energy_efficiency', 0),
+        sustainability_data['rating'],
+        json.dumps(sustainability_data['recommendations'])
+    ))
+    
+    # Store environmental impact assessment
+    impact_id = f"impact_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(user_id) % 10000}"
+    
+    cursor.execute('''
+        INSERT INTO environmental_impacts 
+        (id, user_id, crop_type, water_pollution_level, air_pollution_level,
+         soil_degradation_level, biodiversity_loss_level, overall_impact_score, mitigation_measures)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        impact_id, user_id, crop_type,
+        environmental_data['impact_levels'].get('water_pollution', 'Low'),
+        environmental_data['impact_levels'].get('air_pollution', 'Low'),
+        environmental_data['impact_levels'].get('soil_degradation', 'Low'),
+        environmental_data['impact_levels'].get('biodiversity_loss', 'Low'),
+        environmental_data['overall_impact_score'],
+        json.dumps(environmental_data['mitigation_measures'])
+    ))
+    
+                conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+
+# API Endpoints
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        "success": True,
+        "message": "Sustainability Scoring API is running",
+        "timestamp": datetime.now().isoformat(),
+        "features": [
+            "Sustainability scoring",
+            "Environmental impact assessment",
+            "Eco-friendly recommendations",
+            "Mitigation measures",
+            "Crop sustainability profiles"
+        ]
+    })
+
+@app.route('/assess/sustainability', methods=['POST'])
+def assess_sustainability():
+    """Assess sustainability of farming practices"""
+    try:
+        data = request.get_json()
+        
+        user_id = data.get('user_id', 'anonymous')
+        crop_data = data.get('crop_data', {})
+        farm_conditions = data.get('farm_conditions', {})
+        
+        if not crop_data.get('crop_type'):
+            return jsonify({
+                "success": False,
+                "error": "Crop type is required"
+            }), 400
+        
+        # Calculate sustainability score
+        sustainability_data = calculate_sustainability_score(crop_data, farm_conditions)
+        
+        # Calculate environmental impact
+        environmental_data = calculate_environmental_impact(crop_data, farm_conditions)
+        
+        # Store assessments
+        store_sustainability_assessment(user_id, crop_data['crop_type'], 
+                                      farm_conditions.get('farm_area', 1.0),
+                                      sustainability_data, environmental_data)
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "sustainability_assessment": sustainability_data,
+                "environmental_impact": environmental_data,
+                "assessment_date": datetime.now().isoformat()
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Sustainability assessment error: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/crops/sustainability', methods=['GET'])
+def get_crop_sustainability():
+    """Get sustainability profiles for crops"""
+    crop_type = request.args.get('crop_type')
+    
+    if crop_type and crop_type in CROP_SUSTAINABILITY_PROFILES:
+        return jsonify({
+            "success": True,
+            "data": {
+                "crop_type": crop_type,
+                "sustainability_profile": CROP_SUSTAINABILITY_PROFILES[crop_type]
+            }
+        })
+    else:
+        return jsonify({
+            "success": True,
+            "data": {
+                "available_crops": list(CROP_SUSTAINABILITY_PROFILES.keys()),
+                "sustainability_profiles": CROP_SUSTAINABILITY_PROFILES
+            }
+        })
+
+@app.route('/recommendations/eco-friendly', methods=['GET'])
+def get_eco_friendly_recommendations():
+    """Get eco-friendly farming recommendations"""
+    crop_type = request.args.get('crop_type', 'Rice')
+    
+    crop_profile = CROP_SUSTAINABILITY_PROFILES.get(crop_type, CROP_SUSTAINABILITY_PROFILES['Rice'])
+    
+    return jsonify({
+        "success": True,
+        "data": {
+            "crop_type": crop_type,
+            "eco_friendly_alternatives": crop_profile.get('eco_friendly_alternatives', []),
+            "improvement_suggestions": crop_profile.get('improvement_suggestions', []),
+            "sustainability_score": crop_profile.get('sustainability_score', 0)
+        }
+    })
+
+@app.route('/history/assessments', methods=['GET'])
+def get_assessment_history():
+    """Get sustainability assessment history"""
+    try:
+        user_id = request.args.get('user_id', 'anonymous')
+        limit = int(request.args.get('limit', 50))
+        
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM sustainability_assessments 
+            WHERE user_id = ? 
+            ORDER BY assessment_date DESC 
+            LIMIT ?
+        ''', (user_id, limit))
+        
+        assessments = []
+        for row in cursor.fetchall():
+            assessments.append({
+                'id': row[0],
+                'crop_type': row[2],
+                'farm_area': row[3],
+                'sustainability_score': row[4],
+                'factor_scores': {
+                    'water_usage': row[5],
+                    'carbon_footprint': row[6],
+                    'soil_health': row[7],
+                    'biodiversity': row[8],
+                    'chemical_usage': row[9],
+                    'energy_efficiency': row[10]
+                },
+                'overall_rating': row[11],
+                'recommendations': json.loads(row[12]) if row[12] else [],
+                'assessment_date': row[13]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "assessments": assessments,
+                "total_assessments": len(assessments)
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Error getting assessment history: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/analytics/sustainability', methods=['GET'])
+def get_sustainability_analytics():
+    """Get sustainability analytics and insights"""
+    try:
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        # Get average sustainability scores by crop
+        cursor.execute('''
+            SELECT crop_type, AVG(sustainability_score) as avg_score, 
+                   COUNT(*) as assessment_count
+            FROM sustainability_assessments 
+            WHERE assessment_date >= date('now', '-30 days')
+            GROUP BY crop_type
+        ''')
+        
+        crop_analytics = []
+        for row in cursor.fetchall():
+            crop_analytics.append({
+                'crop_type': row[0],
+                'average_score': round(row[1], 1),
+                'assessment_count': row[2]
+            })
+        
+        # Get environmental impact trends
+        cursor.execute('''
+            SELECT crop_type, 
+                   AVG(CASE WHEN water_pollution_level = 'Critical' THEN 4
+                            WHEN water_pollution_level = 'High' THEN 3
+                            WHEN water_pollution_level = 'Medium' THEN 2
+                            ELSE 1 END) as avg_water_pollution,
+                   AVG(overall_impact_score) as avg_impact_score
+            FROM environmental_impacts 
+            WHERE assessment_date >= date('now', '-30 days')
+            GROUP BY crop_type
+        ''')
+        
+        impact_analytics = []
+        for row in cursor.fetchall():
+            impact_analytics.append({
+                'crop_type': row[0],
+                'average_water_pollution': round(row[1], 1),
+                'average_impact_score': round(row[2], 1)
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "crop_sustainability_analytics": crop_analytics,
+                "environmental_impact_analytics": impact_analytics,
+                "insights": {
+                    "most_sustainable_crop": max(crop_analytics, key=lambda x: x['average_score'])['crop_type'] if crop_analytics else None,
+                    "least_sustainable_crop": min(crop_analytics, key=lambda x: x['average_score'])['crop_type'] if crop_analytics else None,
+                    "total_assessments": sum(c['assessment_count'] for c in crop_analytics)
+                }
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Error getting sustainability analytics: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+if __name__ == '__main__':
+    print("🌱 Sustainability Scoring API Starting...")
+    print(f"📊 Database: {DB_NAME}")
+    print(f"🌾 Crop profiles: {len(CROP_SUSTAINABILITY_PROFILES)}")
+    print(f"📈 Sustainability factors: {len(SUSTAINABILITY_FACTORS)}")
+    print(f"🌍 Environmental impact categories: {len(ENVIRONMENTAL_IMPACTS)}")
+    print("🚀 Server running on http://0.0.0.0:5009")
+    print("📱 Android emulator can access via http://10.0.2.2:5009")
+    app.run(debug=True, host='0.0.0.0', port=5009)

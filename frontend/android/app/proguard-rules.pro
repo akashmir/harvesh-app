@@ -1,0 +1,21 @@
+# Please add these rules to your existing keep rules in order to suppress warnings.
+# This is generated automatically by the Android Gradle plugin.
+-dontwarn java.beans.BeanInfo
+-dontwarn java.beans.FeatureDescriptor
+-dontwarn java.beans.IntrospectionException
+-dontwarn java.beans.Introspector
+-dontwarn java.beans.PropertyDescriptor
+-dontwarn org.tensorflow.lite.gpu.GpuDelegateFactory$Options
+-dontwarn org.tensorflow.lite.support.common.FileUtil
+-dontwarn org.tensorflow.lite.support.common.TensorOperator
+-dontwarn org.tensorflow.lite.support.common.ops.CastOp
+-dontwarn org.tensorflow.lite.support.common.ops.NormalizeOp
+-dontwarn org.tensorflow.lite.support.image.ImageOperator
+-dontwarn org.tensorflow.lite.support.image.ImageProcessor$Builder
+-dontwarn org.tensorflow.lite.support.image.ImageProcessor
+-dontwarn org.tensorflow.lite.support.image.TensorImage
+-dontwarn org.tensorflow.lite.support.image.ops.ResizeOp$ResizeMethod
+-dontwarn org.tensorflow.lite.support.image.ops.ResizeOp
+-dontwarn org.tensorflow.lite.support.image.ops.Rot90Op
+-dontwarn org.tensorflow.lite.support.metadata.MetadataExtractor
+-dontwarn org.tensorflow.lite.support.metadata.schema.ModelMetadata

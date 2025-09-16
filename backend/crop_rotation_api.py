@@ -1,0 +1,845 @@
+"""
+Crop Rotation Recommendation API
+Provides intelligent crop rotation suggestions for soil fertility preservation and sustainable farming
+"""
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import json
+import sqlite3
+import numpy as np
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
+import os
+import logging
+import random
+
+app = Flask(__name__)
+CORS(app)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Database setup
+DB_NAME = 'crop_rotation.db'
+
+# Crop categories and their characteristics
+CROP_CATEGORIES = {
+    'Cereals': {
+        'crops': ['Rice', 'Wheat', 'Maize', 'Barley', 'Oats', 'Sorghum', 'Millet'],
+        'nutrient_demand': 'High',
+        'soil_impact': 'Depleting',
+        'root_depth': 'Medium',
+        'pest_attraction': 'High',
+        'disease_risk': 'High'
+    },
+    'Legumes': {
+        'crops': ['Soybean', 'Chickpea', 'Lentil', 'Pea', 'Bean', 'Groundnut', 'Pigeon Pea'],
+        'nutrient_demand': 'Low',
+        'soil_impact': 'Improving',
+        'root_depth': 'Deep',
+        'pest_attraction': 'Low',
+        'disease_risk': 'Low',
+        'nitrogen_fixation': True
+    },
+    'Oilseeds': {
+        'crops': ['Sunflower', 'Mustard', 'Sesame', 'Safflower', 'Linseed'],
+        'nutrient_demand': 'Medium',
+        'soil_impact': 'Neutral',
+        'root_depth': 'Medium',
+        'pest_attraction': 'Medium',
+        'disease_risk': 'Medium'
+    },
+    'Fiber': {
+        'crops': ['Cotton', 'Jute', 'Hemp'],
+        'nutrient_demand': 'High',
+        'soil_impact': 'Depleting',
+        'root_depth': 'Deep',
+        'pest_attraction': 'High',
+        'disease_risk': 'High'
+    },
+    'Vegetables': {
+        'crops': ['Tomato', 'Onion', 'Potato', 'Cabbage', 'Carrot', 'Spinach'],
+        'nutrient_demand': 'High',
+        'soil_impact': 'Depleting',
+        'root_depth': 'Shallow',
+        'pest_attraction': 'High',
+        'disease_risk': 'High'
+    },
+    'Spices': {
+        'crops': ['Turmeric', 'Ginger', 'Chili', 'Cumin', 'Coriander'],
+        'nutrient_demand': 'Medium',
+        'soil_impact': 'Neutral',
+        'root_depth': 'Shallow',
+        'pest_attraction': 'Low',
+        'disease_risk': 'Low'
+    }
+}
+
+# Crop rotation rules and compatibility
+ROTATION_RULES = {
+    'same_family_avoidance': {
+        'description': 'Avoid planting crops from the same family consecutively',
+        'weight': 0.3,
+        'families': {
+            'Poaceae': ['Rice', 'Wheat', 'Maize', 'Barley', 'Oats', 'Sorghum', 'Millet'],
+            'Fabaceae': ['Soybean', 'Chickpea', 'Lentil', 'Pea', 'Bean', 'Groundnut', 'Pigeon Pea'],
+            'Asteraceae': ['Sunflower', 'Safflower'],
+            'Brassicaceae': ['Mustard', 'Cabbage'],
+            'Solanaceae': ['Tomato', 'Potato', 'Chili'],
+            'Malvaceae': ['Cotton'],
+            'Zingiberaceae': ['Turmeric', 'Ginger']
+        }
+    },
+    'nutrient_balance': {
+        'description': 'Balance nutrient-demanding crops with nutrient-fixing crops',
+        'weight': 0.25,
+        'high_demand': ['Rice', 'Wheat', 'Maize', 'Cotton', 'Tomato', 'Potato'],
+        'low_demand': ['Soybean', 'Chickpea', 'Lentil', 'Pea', 'Groundnut'],
+        'nitrogen_fixing': ['Soybean', 'Chickpea', 'Lentil', 'Pea', 'Bean', 'Groundnut', 'Pigeon Pea']
+    },
+    'pest_break': {
+        'description': 'Break pest and disease cycles with different crop types',
+        'weight': 0.2,
+        'high_pest_risk': ['Rice', 'Wheat', 'Maize', 'Cotton', 'Tomato', 'Potato'],
+        'low_pest_risk': ['Soybean', 'Chickpea', 'Lentil', 'Pea', 'Groundnut', 'Turmeric', 'Ginger']
+    },
+    'root_depth_variation': {
+        'description': 'Vary root depths to utilize different soil layers',
+        'weight': 0.15,
+        'deep_rooted': ['Soybean', 'Chickpea', 'Groundnut', 'Cotton', 'Sunflower'],
+        'medium_rooted': ['Rice', 'Wheat', 'Maize', 'Mustard'],
+        'shallow_rooted': ['Tomato', 'Onion', 'Potato', 'Turmeric', 'Ginger']
+    },
+    'seasonal_compatibility': {
+        'description': 'Ensure crops are suitable for the planting season',
+        'weight': 0.1,
+        'kharif': ['Rice', 'Maize', 'Soybean', 'Cotton', 'Groundnut', 'Turmeric'],
+        'rabi': ['Wheat', 'Chickpea', 'Lentil', 'Mustard', 'Potato', 'Onion'],
+        'zaid': ['Tomato', 'Cucumber', 'Watermelon', 'Sunflower']
+    }
+}
+
+# Soil health indicators and their impact on crop selection
+SOIL_HEALTH_INDICATORS = {
+    'nitrogen_level': {
+        'low': {'recommended': 'Legumes', 'avoid': 'Cereals'},
+        'medium': {'recommended': 'Oilseeds', 'avoid': []},
+        'high': {'recommended': 'Cereals', 'avoid': 'Legumes'}
+    },
+    'phosphorus_level': {
+        'low': {'recommended': 'Legumes', 'avoid': 'Cereals'},
+        'medium': {'recommended': 'Oilseeds', 'avoid': []},
+        'high': {'recommended': 'Cereals', 'avoid': []}
+    },
+    'potassium_level': {
+        'low': {'recommended': 'Legumes', 'avoid': 'Cereals'},
+        'medium': {'recommended': 'Oilseeds', 'avoid': []},
+        'high': {'recommended': 'Cereals', 'avoid': []}
+    },
+    'ph_level': {
+        'acidic': {'recommended': 'Rice', 'avoid': 'Wheat'},
+        'neutral': {'recommended': 'All crops', 'avoid': []},
+        'alkaline': {'recommended': 'Wheat', 'avoid': 'Rice'}
+    },
+    'organic_matter': {
+        'low': {'recommended': 'Legumes', 'avoid': 'Cereals'},
+        'medium': {'recommended': 'Oilseeds', 'avoid': []},
+        'high': {'recommended': 'Cereals', 'avoid': []}
+    }
+}
+
+def init_database():
+    """Initialize the crop rotation database"""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    # Crop rotation plans table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rotation_plans (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            farm_area REAL NOT NULL,
+            current_crop TEXT NOT NULL,
+            soil_conditions TEXT NOT NULL,
+            rotation_sequence TEXT NOT NULL,
+            rotation_duration INTEGER NOT NULL,
+            expected_benefits TEXT,
+            implementation_notes TEXT,
+            created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Rotation history table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rotation_history (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            field_id TEXT NOT NULL,
+            crop_planted TEXT NOT NULL,
+            planting_date DATE NOT NULL,
+            harvest_date DATE,
+            soil_health_before TEXT,
+            soil_health_after TEXT,
+            yield_achieved REAL,
+            notes TEXT,
+            created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Soil health tracking table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS soil_health_tracking (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            field_id TEXT NOT NULL,
+            measurement_date DATE NOT NULL,
+            nitrogen_level REAL NOT NULL,
+            phosphorus_level REAL NOT NULL,
+            potassium_level REAL NOT NULL,
+            ph_level REAL NOT NULL,
+            organic_matter REAL NOT NULL,
+            soil_moisture REAL NOT NULL,
+            notes TEXT,
+            created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+# Initialize database
+init_database()
+
+def analyze_soil_conditions(soil_data: Dict) -> Dict:
+    """Analyze soil conditions for crop rotation planning"""
+    try:
+        # Get soil nutrient levels
+        nitrogen = soil_data.get('nitrogen', 100)
+        phosphorus = soil_data.get('phosphorus', 25)
+        potassium = soil_data.get('potassium', 200)
+        ph = soil_data.get('ph', 6.5)
+        organic_matter = soil_data.get('organic_matter', 1.0)
+        
+        # Categorize nutrient levels
+        nitrogen_level = 'low' if nitrogen < 80 else 'high' if nitrogen > 150 else 'medium'
+        phosphorus_level = 'low' if phosphorus < 15 else 'high' if phosphorus > 40 else 'medium'
+        potassium_level = 'low' if potassium < 150 else 'high' if potassium > 300 else 'medium'
+        
+        # Categorize pH
+        if ph < 6.0:
+            ph_level = 'acidic'
+        elif ph > 8.0:
+            ph_level = 'alkaline'
+        else:
+            ph_level = 'neutral'
+        
+        # Categorize organic matter
+        organic_matter_level = 'low' if organic_matter < 0.8 else 'high' if organic_matter > 2.0 else 'medium'
+        
+        return {
+            'nitrogen_level': nitrogen_level,
+            'phosphorus_level': phosphorus_level,
+            'potassium_level': potassium_level,
+            'ph_level': ph_level,
+            'organic_matter_level': organic_matter_level,
+            'overall_health': 'good' if all([
+                nitrogen_level in ['medium', 'high'],
+                phosphorus_level in ['medium', 'high'],
+                potassium_level in ['medium', 'high'],
+                ph_level == 'neutral'
+            ]) else 'needs_improvement'
+        }
+        
+    except Exception as e:
+        logger.error(f"Soil analysis error: {str(e)}")
+        return {
+            'nitrogen_level': 'medium',
+            'phosphorus_level': 'medium',
+            'potassium_level': 'medium',
+            'ph_level': 'neutral',
+            'organic_matter_level': 'medium',
+            'overall_health': 'unknown'
+        }
+
+def get_crop_family(crop_name: str) -> str:
+    """Get the botanical family of a crop"""
+    for family, crops in ROTATION_RULES['same_family_avoidance']['families'].items():
+        if crop_name in crops:
+            return family
+    return 'Unknown'
+
+def calculate_crop_compatibility(crop1: str, crop2: str) -> float:
+    """Calculate compatibility score between two crops"""
+    try:
+        compatibility_score = 1.0
+        
+        # Check same family avoidance
+        family1 = get_crop_family(crop1)
+        family2 = get_crop_family(crop2)
+        
+        if family1 == family2 and family1 != 'Unknown':
+            compatibility_score -= 0.4  # Strong penalty for same family
+        
+        # Check nutrient balance
+        if crop1 in ROTATION_RULES['nutrient_balance']['high_demand']:
+            if crop2 in ROTATION_RULES['nutrient_balance']['nitrogen_fixing']:
+                compatibility_score += 0.3  # Bonus for nitrogen-fixing crop after high-demand crop
+            elif crop2 in ROTATION_RULES['nutrient_balance']['high_demand']:
+                compatibility_score -= 0.2  # Penalty for consecutive high-demand crops
+        
+        # Check pest break
+        if (crop1 in ROTATION_RULES['pest_break']['high_pest_risk'] and 
+            crop2 in ROTATION_RULES['pest_break']['high_pest_risk']):
+            compatibility_score -= 0.3  # Penalty for consecutive high-pest-risk crops
+        
+        # Check root depth variation
+        depth1 = get_root_depth_category(crop1)
+        depth2 = get_root_depth_category(crop2)
+        
+        if depth1 != depth2:
+            compatibility_score += 0.2  # Bonus for different root depths
+        
+        return max(0.0, min(1.0, compatibility_score))  # Clamp between 0 and 1
+        
+    except Exception as e:
+        logger.error(f"Crop compatibility calculation error: {str(e)}")
+        return 0.5  # Default neutral score
+
+def get_root_depth_category(crop_name: str) -> str:
+    """Get root depth category for a crop"""
+    for category, info in CROP_CATEGORIES.items():
+        if crop_name in info['crops']:
+            return info['root_depth']
+    return 'Medium'
+
+def generate_rotation_sequence(current_crop: str, soil_conditions: Dict, 
+                              duration_years: int = 3) -> List[Dict]:
+    """Generate crop rotation sequence"""
+    try:
+        # Analyze soil conditions
+        soil_analysis = analyze_soil_conditions(soil_conditions)
+        
+        # Get all available crops
+        all_crops = []
+        for category_info in CROP_CATEGORIES.values():
+            all_crops.extend(category_info['crops'])
+        
+        # Filter crops based on soil conditions
+        suitable_crops = filter_crops_by_soil_conditions(all_crops, soil_analysis)
+        
+        # Generate rotation sequence
+        rotation_sequence = []
+        previous_crop = current_crop
+        
+        for year in range(duration_years):
+            # Find best crop for this year
+            best_crop = find_best_rotation_crop(previous_crop, suitable_crops, soil_analysis, year)
+            
+            if best_crop:
+                rotation_sequence.append({
+                    'year': year + 1,
+                    'crop': best_crop,
+                    'category': get_crop_category(best_crop),
+                    'planting_season': get_planting_season(best_crop),
+                    'expected_benefits': get_expected_benefits(best_crop, soil_analysis),
+                    'compatibility_score': calculate_crop_compatibility(previous_crop, best_crop)
+                })
+                previous_crop = best_crop
+                # Remove selected crop from available options to avoid repetition
+                if best_crop in suitable_crops:
+                    suitable_crops.remove(best_crop)
+        
+        return rotation_sequence
+        
+    except Exception as e:
+        logger.error(f"Rotation sequence generation error: {str(e)}")
+        return []
+
+def filter_crops_by_soil_conditions(crops: List[str], soil_analysis: Dict) -> List[str]:
+    """Filter crops based on soil conditions"""
+    suitable_crops = []
+    
+    for crop in crops:
+        is_suitable = True
+        
+        # Check soil health indicators
+        for indicator, level in soil_analysis.items():
+            if indicator in SOIL_HEALTH_INDICATORS:
+                recommendations = SOIL_HEALTH_INDICATORS[indicator].get(level, {})
+                crop_category = get_crop_category(crop)
+                
+                if crop_category in recommendations.get('avoid', []):
+                    is_suitable = False
+                    break
+        
+        if is_suitable:
+            suitable_crops.append(crop)
+    
+    return suitable_crops
+
+def find_best_rotation_crop(previous_crop: str, available_crops: List[str], 
+                           soil_analysis: Dict, year: int) -> str:
+    """Find the best crop for rotation"""
+    try:
+        if not available_crops:
+            return None
+        
+        # Score each available crop
+        crop_scores = {}
+        
+        for crop in available_crops:
+            score = 0.0
+            
+            # Compatibility with previous crop
+            compatibility = calculate_crop_compatibility(previous_crop, crop)
+            score += compatibility * 0.4
+            
+            # Soil condition suitability
+            soil_suitability = calculate_soil_suitability(crop, soil_analysis)
+            score += soil_suitability * 0.3
+            
+            # Nutrient balance
+            nutrient_balance = calculate_nutrient_balance_score(crop, soil_analysis)
+            score += nutrient_balance * 0.2
+            
+            # Pest and disease break
+            pest_break = calculate_pest_break_score(crop, previous_crop)
+            score += pest_break * 0.1
+            
+            crop_scores[crop] = score
+        
+        # Return crop with highest score
+        best_crop = max(crop_scores, key=crop_scores.get)
+        return best_crop
+        
+    except Exception as e:
+        logger.error(f"Best crop finding error: {str(e)}")
+        return available_crops[0] if available_crops else None
+
+def calculate_soil_suitability(crop: str, soil_analysis: Dict) -> float:
+    """Calculate how suitable a crop is for current soil conditions"""
+    try:
+        crop_category = get_crop_category(crop)
+        suitability_score = 0.5  # Base score
+        
+        # Check each soil indicator
+        for indicator, level in soil_analysis.items():
+            if indicator in SOIL_HEALTH_INDICATORS:
+                recommendations = SOIL_HEALTH_INDICATORS[indicator].get(level, {})
+                
+                if crop_category in recommendations.get('recommended', []):
+                    suitability_score += 0.1
+                elif crop_category in recommendations.get('avoid', []):
+                    suitability_score -= 0.2
+        
+        return max(0.0, min(1.0, suitability_score))
+        
+    except Exception as e:
+        logger.error(f"Soil suitability calculation error: {str(e)}")
+        return 0.5
+
+def calculate_nutrient_balance_score(crop: str, soil_analysis: Dict) -> float:
+    """Calculate nutrient balance score for a crop"""
+    try:
+        # Check if crop is nitrogen-fixing
+        if crop in ROTATION_RULES['nutrient_balance']['nitrogen_fixing']:
+            return 1.0  # High score for nitrogen-fixing crops
+        
+        # Check if crop has high nutrient demand
+        if crop in ROTATION_RULES['nutrient_balance']['high_demand']:
+            # Check if soil has adequate nutrients
+            if (soil_analysis.get('nitrogen_level') in ['medium', 'high'] and
+                soil_analysis.get('phosphorus_level') in ['medium', 'high'] and
+                soil_analysis.get('potassium_level') in ['medium', 'high']):
+                return 0.8  # Good score if soil has adequate nutrients
+            else:
+                return 0.3  # Low score if soil lacks nutrients
+        
+        return 0.6  # Medium score for other crops
+        
+    except Exception as e:
+        logger.error(f"Nutrient balance calculation error: {str(e)}")
+        return 0.5
+
+def calculate_pest_break_score(crop: str, previous_crop: str) -> float:
+    """Calculate pest break score for a crop"""
+    try:
+        # Check if both crops are high pest risk
+        if (crop in ROTATION_RULES['pest_break']['high_pest_risk'] and
+            previous_crop in ROTATION_RULES['pest_break']['high_pest_risk']):
+            return 0.2  # Low score for consecutive high-pest-risk crops
+        
+        # Check if current crop is low pest risk after high pest risk crop
+        if (crop in ROTATION_RULES['pest_break']['low_pest_risk'] and
+            previous_crop in ROTATION_RULES['pest_break']['high_pest_risk']):
+            return 1.0  # High score for pest break
+        
+        return 0.6  # Medium score for other combinations
+        
+    except Exception as e:
+        logger.error(f"Pest break calculation error: {str(e)}")
+        return 0.5
+
+def get_crop_category(crop_name: str) -> str:
+    """Get the category of a crop"""
+    for category, info in CROP_CATEGORIES.items():
+        if crop_name in info['crops']:
+            return category
+    return 'Unknown'
+
+def get_planting_season(crop_name: str) -> str:
+    """Get the planting season for a crop"""
+    for season, crops in ROTATION_RULES['seasonal_compatibility'].items():
+        if crop_name in crops:
+            return season
+    return 'Unknown'
+
+def get_expected_benefits(crop_name: str, soil_analysis: Dict) -> List[str]:
+    """Get expected benefits of planting a crop"""
+    benefits = []
+    
+    crop_category = get_crop_category(crop_name)
+    
+    # Nitrogen fixation benefits
+    if crop_name in ROTATION_RULES['nutrient_balance']['nitrogen_fixing']:
+        benefits.append("Nitrogen fixation - improves soil fertility")
+    
+    # Nutrient demand benefits
+    if crop_name in ROTATION_RULES['nutrient_balance']['low_demand']:
+        benefits.append("Low nutrient demand - allows soil to recover")
+    
+    # Pest break benefits
+    if crop_name in ROTATION_RULES['pest_break']['low_pest_risk']:
+        benefits.append("Pest and disease break - reduces pest pressure")
+    
+    # Root depth benefits
+    root_depth = get_root_depth_category(crop_name)
+    if root_depth == 'Deep':
+        benefits.append("Deep roots - improves soil structure and water infiltration")
+    elif root_depth == 'Shallow':
+        benefits.append("Shallow roots - utilizes surface nutrients")
+    
+    # Soil health benefits
+    if soil_analysis.get('overall_health') == 'needs_improvement':
+        if crop_category == 'Legumes':
+            benefits.append("Soil health improvement - adds organic matter")
+    
+    return benefits
+
+def store_rotation_plan(user_id: str, farm_area: float, current_crop: str, 
+                       soil_conditions: Dict, rotation_sequence: List[Dict]):
+    """Store crop rotation plan in database"""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    plan_id = f"rotation_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(user_id) % 10000}"
+    
+    # Calculate expected benefits
+    expected_benefits = []
+    for year_plan in rotation_sequence:
+        expected_benefits.extend(year_plan.get('expected_benefits', []))
+    
+    cursor.execute('''
+        INSERT INTO rotation_plans 
+        (id, user_id, farm_area, current_crop, soil_conditions, rotation_sequence,
+         rotation_duration, expected_benefits, implementation_notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        plan_id, user_id, farm_area, current_crop,
+        json.dumps(soil_conditions),
+        json.dumps(rotation_sequence),
+        len(rotation_sequence),
+        json.dumps(list(set(expected_benefits))),  # Remove duplicates
+        "Generated by AI crop rotation system"
+    ))
+    
+    conn.commit()
+    conn.close()
+
+# API Endpoints
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        "success": True,
+        "message": "Crop Rotation API is running",
+        "timestamp": datetime.now().isoformat(),
+        "features": [
+            "Intelligent crop rotation planning",
+            "Soil health-based recommendations",
+            "Pest and disease cycle breaking",
+            "Nutrient balance optimization",
+            "Seasonal compatibility checking"
+        ]
+    })
+
+@app.route('/rotation/plan', methods=['POST'])
+def create_rotation_plan():
+    """Create a crop rotation plan"""
+    try:
+        data = request.get_json()
+        
+        user_id = data.get('user_id', 'anonymous')
+        current_crop = data.get('current_crop', 'Rice')
+        soil_conditions = data.get('soil_conditions', {})
+        duration_years = data.get('duration_years', 3)
+        farm_area = data.get('farm_area', 1.0)
+        
+        if not current_crop:
+            return jsonify({
+                "success": False,
+                "error": "Current crop is required"
+            }), 400
+        
+        # Generate rotation sequence
+        rotation_sequence = generate_rotation_sequence(current_crop, soil_conditions, duration_years)
+        
+        if not rotation_sequence:
+            return jsonify({
+                "success": False,
+                "error": "Unable to generate rotation plan"
+            }), 500
+        
+        # Store rotation plan
+        store_rotation_plan(user_id, farm_area, current_crop, soil_conditions, rotation_sequence)
+        
+        # Calculate overall benefits
+        overall_benefits = []
+        for year_plan in rotation_sequence:
+            overall_benefits.extend(year_plan.get('expected_benefits', []))
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "rotation_plan": {
+                    "current_crop": current_crop,
+                    "duration_years": duration_years,
+                    "sequence": rotation_sequence,
+                    "overall_benefits": list(set(overall_benefits)),
+                    "soil_health_improvement": "Expected improvement in soil fertility and structure"
+                },
+                "recommendations": [
+                    "Monitor soil health regularly",
+                    "Adjust rotation based on actual results",
+                    "Consider cover crops between main crops",
+                    "Maintain proper irrigation and drainage"
+                ],
+                "created_date": datetime.now().isoformat()
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Rotation plan creation error: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/rotation/compatibility', methods=['POST'])
+def check_crop_compatibility():
+    """Check compatibility between two crops"""
+    try:
+        data = request.get_json()
+        
+        crop1 = data.get('crop1', '')
+        crop2 = data.get('crop2', '')
+        
+        if not crop1 or not crop2:
+            return jsonify({
+                "success": False,
+                "error": "Both crops are required"
+            }), 400
+        
+        compatibility_score = calculate_crop_compatibility(crop1, crop2)
+        
+        # Get detailed analysis
+        family1 = get_crop_family(crop1)
+        family2 = get_crop_family(crop2)
+        
+        analysis = {
+            'compatibility_score': round(compatibility_score, 2),
+            'compatibility_level': 'High' if compatibility_score > 0.7 else 'Medium' if compatibility_score > 0.4 else 'Low',
+            'same_family': family1 == family2,
+            'family1': family1,
+            'family2': family2,
+            'recommendations': []
+        }
+        
+        # Add recommendations
+        if family1 == family2 and family1 != 'Unknown':
+            analysis['recommendations'].append("Avoid planting crops from the same family consecutively")
+        
+        if compatibility_score < 0.4:
+            analysis['recommendations'].append("Consider alternative crops with better compatibility")
+        
+        if compatibility_score > 0.7:
+            analysis['recommendations'].append("Good crop combination for rotation")
+        
+        return jsonify({
+            "success": True,
+            "data": analysis
+        })
+    
+    except Exception as e:
+        logger.error(f"Crop compatibility check error: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/rotation/crops', methods=['GET'])
+def get_available_crops():
+    """Get available crops for rotation planning"""
+    crop_type = request.args.get('category')
+    
+    if crop_type and crop_type in CROP_CATEGORIES:
+        return jsonify({
+            "success": True,
+            "data": {
+                "category": crop_type,
+                "crops": CROP_CATEGORIES[crop_type]['crops'],
+                "characteristics": {
+                    key: value for key, value in CROP_CATEGORIES[crop_type].items() 
+                    if key != 'crops'
+                }
+            }
+        })
+    else:
+        return jsonify({
+            "success": True,
+            "data": {
+                "categories": CROP_CATEGORIES,
+                "all_crops": [crop for category_info in CROP_CATEGORIES.values() 
+                             for crop in category_info['crops']]
+            }
+        })
+
+@app.route('/rotation/history', methods=['GET'])
+def get_rotation_history():
+    """Get rotation plan history"""
+    try:
+        user_id = request.args.get('user_id', 'anonymous')
+        limit = int(request.args.get('limit', 50))
+        
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM rotation_plans 
+            WHERE user_id = ? 
+            ORDER BY created_date DESC 
+            LIMIT ?
+        ''', (user_id, limit))
+        
+        plans = []
+        for row in cursor.fetchall():
+            plans.append({
+                'id': row[0],
+                'farm_area': row[2],
+                'current_crop': row[3],
+                'soil_conditions': json.loads(row[4]) if row[4] else {},
+                'rotation_sequence': json.loads(row[5]) if row[5] else [],
+                'rotation_duration': row[6],
+                'expected_benefits': json.loads(row[7]) if row[7] else [],
+                'implementation_notes': row[8],
+                'created_date': row[9]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "rotation_plans": plans,
+                "total_plans": len(plans)
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Error getting rotation history: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/rotation/soil-analysis', methods=['POST'])
+def analyze_soil_for_rotation():
+    """Analyze soil conditions for rotation planning"""
+    try:
+        data = request.get_json()
+        soil_data = data.get('soil_data', {})
+        
+        soil_analysis = analyze_soil_conditions(soil_data)
+        
+        # Get recommendations based on soil analysis
+        recommendations = []
+        
+        if soil_analysis['overall_health'] == 'needs_improvement':
+            recommendations.append("Consider legume crops to improve soil fertility")
+            recommendations.append("Add organic matter to improve soil structure")
+        
+        if soil_analysis['nitrogen_level'] == 'low':
+            recommendations.append("Plant nitrogen-fixing crops like soybeans or chickpeas")
+        
+        if soil_analysis['ph_level'] == 'acidic':
+            recommendations.append("Consider crops tolerant to acidic conditions")
+        
+        if soil_analysis['ph_level'] == 'alkaline':
+            recommendations.append("Consider crops tolerant to alkaline conditions")
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "soil_analysis": soil_analysis,
+                "recommendations": recommendations,
+                "suitable_crop_categories": get_suitable_crop_categories(soil_analysis)
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Soil analysis error: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+def get_suitable_crop_categories(soil_analysis: Dict) -> List[str]:
+    """Get suitable crop categories based on soil analysis"""
+    suitable_categories = []
+    
+    for category, info in CROP_CATEGORIES.items():
+        is_suitable = True
+        
+        # Check if any crops in this category are suitable
+        for crop in info['crops']:
+            crop_category = get_crop_category(crop)
+            
+            # Check soil health indicators
+            for indicator, level in soil_analysis.items():
+                if indicator in SOIL_HEALTH_INDICATORS:
+                    recommendations = SOIL_HEALTH_INDICATORS[indicator].get(level, {})
+                    
+                    if crop_category in recommendations.get('avoid', []):
+                        is_suitable = False
+                        break
+            
+            if is_suitable:
+                break
+        
+        if is_suitable:
+            suitable_categories.append(category)
+    
+    return suitable_categories
+
+if __name__ == '__main__':
+    print("🔄 Crop Rotation API Starting...")
+    print(f"📊 Database: {DB_NAME}")
+    print(f"🌾 Crop categories: {len(CROP_CATEGORIES)}")
+    print(f"📋 Rotation rules: {len(ROTATION_RULES)}")
+    print(f"🌱 Soil health indicators: {len(SOIL_HEALTH_INDICATORS)}")
+    print("🚀 Server running on http://0.0.0.0:5010")
+    print("📱 Android emulator can access via http://10.0.2.2:5010")
+    app.run(debug=True, host='0.0.0.0', port=5010)

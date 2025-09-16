@@ -1,0 +1,736 @@
+"""
+Field Management System API
+Provides GPS-based field tracking, soil conditions, and crop history management
+"""
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import json
+import uuid
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
+import math
+
+
+
+# PostgreSQL Database Configuration
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from contextlib import contextmanager
+
+# Database configuration
+DATABASE_CONFIG = {
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'port': os.getenv('DB_PORT', '5432'),
+    'database': os.getenv('DB_NAME', 'harvest_enterprise'),
+    'user': os.getenv('DB_USER', 'postgres'),
+    'password': os.getenv('DB_PASSWORD', 'K@shmir2442')
+}
+
+@contextmanager
+def get_db_connection():
+    """Get PostgreSQL database connection with proper error handling"""
+    conn = None
+    try:
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        conn.autocommit = False
+        yield conn
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise e
+    finally:
+        if conn:
+            conn.close()
+
+@contextmanager
+def get_db_cursor():
+    """Get PostgreSQL database cursor with proper error handling"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            yield cursor, conn
+        finally:
+            cursor.close()
+
+
+# Fix import paths for direct execution
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+
+app = Flask(__name__)
+CORS(app)
+
+# Database setup
+# DB_NAME replaced with DATABASE_CONFIG
+
+def init_database():
+    """Initialize database tables using PostgreSQL"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+    
+    # Fields table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS fields (
+            id VARCHAR PRIMARY KEY,
+            name VARCHAR NOT NULL,
+            description VARCHAR,
+            area_hectares FLOAT NOT NULL,
+            latitude FLOAT NOT NULL,
+            longitude FLOAT NOT NULL,
+            soil_type VARCHAR,
+            soil_ph FLOAT,
+            soil_moisture FLOAT,
+            elevation FLOAT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Crop history table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS crop_history (
+            id VARCHAR PRIMARY KEY,
+            field_id VARCHAR NOT NULL,
+            crop_name VARCHAR NOT NULL,
+            planting_date DATE NOT NULL,
+            harvesting_date DATE,
+            yield_kg FLOAT,
+            notes VARCHAR,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (field_id) REFERENCES fields (id)
+        )
+    ''')
+    
+    # Field conditions table (for tracking changes over time)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS field_conditions (
+            id VARCHAR PRIMARY KEY,
+            field_id VARCHAR NOT NULL,
+            soil_ph FLOAT,
+            soil_moisture FLOAT,
+            temperature FLOAT,
+            humidity FLOAT,
+            recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (field_id) REFERENCES fields (id)
+        )
+    ''')
+    
+                conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+
+# Initialize database on startup
+init_database()
+
+# Soil types and their characteristics
+SOIL_TYPES = {
+    "clay": {
+        "name": "Clay Soil",
+        "description": "Heavy, dense soil with high water retention",
+        "ph_range": (6.0, 7.5),
+        "drainage": "Poor",
+        "suitable_crops": ["Rice", "Wheat", "Sugarcane", "Cotton"]
+    },
+    "sandy": {
+        "name": "Sandy Soil", 
+        "description": "Light, well-draining soil with low water retention",
+        "ph_range": (6.0, 7.0),
+        "drainage": "Excellent",
+        "suitable_crops": ["Groundnut", "Sunflower", "Maize", "Potato"]
+    },
+    "loamy": {
+        "name": "Loamy Soil",
+        "description": "Balanced soil with good structure and fertility",
+        "ph_range": (6.0, 7.5),
+        "drainage": "Good",
+        "suitable_crops": ["Rice", "Wheat", "Maize", "Cotton", "Sugarcane", "Groundnut"]
+    },
+    "silty": {
+        "name": "Silty Soil",
+        "description": "Smooth, fertile soil with good water retention",
+        "ph_range": (6.0, 7.5),
+        "drainage": "Moderate",
+        "suitable_crops": ["Rice", "Wheat", "Maize", "Cotton"]
+    },
+    "peaty": {
+        "name": "Peaty Soil",
+        "description": "Dark, organic-rich soil with high acidity",
+        "ph_range": (4.5, 6.0),
+        "drainage": "Poor",
+        "suitable_crops": ["Rice", "Potato", "Cabbage"]
+    }
+}
+
+def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate distance between two GPS coordinates in kilometers"""
+    R = 6371  # Earth's radius in kilometers
+    
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    
+    a = (math.sin(dlat/2) * math.sin(dlat/2) + 
+         math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * 
+         math.sin(dlon/2) * math.sin(dlon/2))
+    
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    return R * c
+
+def get_field_by_id(field_id: str) -> Optional[Dict]:
+    """Get field details by ID"""
+    conn = psycopg2.connect(**DATABASE_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT * FROM fields WHERE id = ?', (field_id,))
+    field = cursor.fetchone()
+    
+    if field:
+        field_dict = {
+            'id': field[0],
+            'name': field[1],
+            'description': field[2],
+            'area_hectares': field[3],
+            'latitude': field[4],
+            'longitude': field[5],
+            'soil_type': field[6],
+            'soil_ph': field[7],
+            'soil_moisture': field[8],
+            'elevation': field[9],
+            'created_at': field[10],
+            'updated_at': field[11]
+        }
+        conn.close()
+        return field_dict
+    
+    conn.close()
+    return None
+
+def get_field_crop_history(field_id: str) -> List[Dict]:
+    """Get crop history for a field"""
+    conn = psycopg2.connect(**DATABASE_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT * FROM crop_history 
+        WHERE field_id = ? 
+        ORDER BY planting_date DESC
+    ''', (field_id,))
+    
+    history = []
+    for row in cursor.fetchall():
+        history.append({
+            'id': row[0],
+            'field_id': row[1],
+            'crop_name': row[2],
+            'planting_date': row[3],
+            'harvesting_date': row[4],
+            'yield_kg': row[5],
+            'notes': row[6],
+            'created_at': row[7]
+        })
+    
+    conn.close()
+    return history
+
+def get_nearby_fields(latitude: float, longitude: float, radius_km: float = 10.0) -> List[Dict]:
+    """Get fields within specified radius"""
+    conn = psycopg2.connect(**DATABASE_CONFIG)
+    cursor = conn.cursor()
+    
+    cursor.execute(\'SELECT * FROM fields\')
+    all_fields = cursor.fetchall()
+    
+    nearby_fields = []
+    for field in all_fields:
+        distance = calculate_distance(latitude, longitude, field[4], field[5])
+        if distance <= radius_km:
+            field_dict = {
+                'id': field[0],
+                'name': field[1],
+                'description': field[2],
+                'area_hectares': field[3],
+                'latitude': field[4],
+                'longitude': field[5],
+                'soil_type': field[6],
+                'soil_ph': field[7],
+                'soil_moisture': field[8],
+                'elevation': field[9],
+                'distance_km': round(distance, 2),
+                'created_at': field[10],
+                'updated_at': field[11]
+            }
+            nearby_fields.append(field_dict)
+    
+    conn.close()
+    return sorted(nearby_fields, key=lambda x: x['distance_km'])
+
+# API Endpoints
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        "success": True,
+        "message": "Field Management API is running",
+        "timestamp": datetime.now().isoformat()
+    })
+
+@app.route('/fields', methods=['GET'])
+def get_all_fields():
+    """Get all fields for the user"""
+    try:
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        cursor.execute(\'SELECT * FROM fields ORDER BY created_at DESC\')
+        fields = cursor.fetchall()
+        
+        field_list = []
+        for field in fields:
+            field_dict = {
+                'id': field[0],
+                'name': field[1],
+                'description': field[2],
+                'area_hectares': field[3],
+                'latitude': field[4],
+                'longitude': field[5],
+                'soil_type': field[6],
+                'soil_ph': field[7],
+                'soil_moisture': field[8],
+                'elevation': field[9],
+                'created_at': field[10],
+                'updated_at': field[11]
+            }
+            field_list.append(field_dict)
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "fields": field_list,
+                "total_fields": len(field_list)
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/fields', methods=['POST'])
+def create_field():
+    """Create a new field"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['name', 'area_hectares', 'latitude', 'longitude']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    "success": False,
+                    "error": f"Missing required field: {field}"
+                }), 400
+        
+        # Generate unique ID
+        field_id = str(uuid.uuid4())
+        
+        # Insert field into database
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO fields (id, name, description, area_hectares, latitude, longitude, 
+                              soil_type, soil_ph, soil_moisture, elevation)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            field_id,
+            data['name'],
+            data.get('description', ''),
+            data['area_hectares'],
+            data['latitude'],
+            data['longitude'],
+            data.get('soil_type', 'loamy'),
+            data.get('soil_ph', 6.5),
+            data.get('soil_moisture', 50.0),
+            data.get('elevation', 0.0)
+        ))
+        
+                    conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+        
+        # Return created field
+        created_field = get_field_by_id(field_id)
+        
+        return jsonify({
+            "success": True,
+            "data": created_field,
+            "message": "Field created successfully"
+        }), 201
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/fields/<field_id>', methods=['GET'])
+def get_field(field_id: str):
+    """Get specific field details with crop history"""
+    try:
+        field = get_field_by_id(field_id)
+        if not field:
+            return jsonify({
+                "success": False,
+                "error": "Field not found"
+            }), 404
+        
+        # Get crop history
+        crop_history = get_field_crop_history(field_id)
+        
+        # Get soil type information
+        soil_info = SOIL_TYPES.get(field['soil_type'], {})
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "field": field,
+                "crop_history": crop_history,
+                "soil_info": soil_info,
+                "total_crops": len(crop_history)
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/fields/<field_id>', methods=['PUT'])
+def update_field(field_id: str):
+    """Update field information"""
+    try:
+        data = request.get_json()
+        field = get_field_by_id(field_id)
+        
+        if not field:
+            return jsonify({
+                "success": False,
+                "error": "Field not found"
+            }), 404
+        
+        # Update field
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE fields 
+            SET name = ?, description = ?, area_hectares = ?, latitude = ?, 
+                longitude = ?, soil_type = ?, soil_ph = ?, soil_moisture = ?, 
+                elevation = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (
+            data.get('name', field['name']),
+            data.get('description', field['description']),
+            data.get('area_hectares', field['area_hectares']),
+            data.get('latitude', field['latitude']),
+            data.get('longitude', field['longitude']),
+            data.get('soil_type', field['soil_type']),
+            data.get('soil_ph', field['soil_ph']),
+            data.get('soil_moisture', field['soil_moisture']),
+            data.get('elevation', field['elevation']),
+            field_id
+        ))
+        
+                    conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+        
+        # Return updated field
+        updated_field = get_field_by_id(field_id)
+        
+        return jsonify({
+            "success": True,
+            "data": updated_field,
+            "message": "Field updated successfully"
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/fields/<field_id>', methods=['DELETE'])
+def delete_field(field_id: str):
+    """Delete a field"""
+    try:
+        field = get_field_by_id(field_id)
+        if not field:
+            return jsonify({
+                "success": False,
+                "error": "Field not found"
+            }), 404
+        
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        # Delete crop history first (foreign key constraint)
+        cursor.execute('DELETE FROM crop_history WHERE field_id = ?', (field_id,))
+        cursor.execute('DELETE FROM field_conditions WHERE field_id = ?', (field_id,))
+        cursor.execute('DELETE FROM fields WHERE id = ?', (field_id,))
+        
+                    conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+        
+        return jsonify({
+            "success": True,
+            "message": "Field deleted successfully"
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/fields/nearby', methods=['GET'])
+def get_nearby_fields_endpoint():
+    """Get fields near a specific location"""
+    try:
+        latitude = float(request.args.get('latitude'))
+        longitude = float(request.args.get('longitude'))
+        radius = float(request.args.get('radius', 10.0))
+        
+        nearby_fields = get_nearby_fields(latitude, longitude, radius)
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "nearby_fields": nearby_fields,
+                "search_center": {
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "radius_km": radius
+                },
+                "total_found": len(nearby_fields)
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/fields/<field_id>/crops', methods=['POST'])
+def add_crop_to_field(field_id: str):
+    """Add crop planting record to field"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['crop_name', 'planting_date']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    "success": False,
+                    "error": f"Missing required field: {field}"
+                }), 400
+        
+        # Check if field exists
+        field = get_field_by_id(field_id)
+        if not field:
+            return jsonify({
+                "success": False,
+                "error": "Field not found"
+            }), 404
+        
+        # Generate unique ID
+        crop_id = str(uuid.uuid4())
+        
+        # Insert crop record
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO crop_history (id, field_id, crop_name, planting_date, 
+                                    harvesting_date, yield_kg, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            crop_id,
+            field_id,
+            data['crop_name'],
+            data['planting_date'],
+            data.get('harvesting_date'),
+            data.get('yield_kg'),
+            data.get('notes', '')
+        ))
+        
+                    conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "crop_id": crop_id,
+                "field_id": field_id,
+                "crop_name": data['crop_name'],
+                "planting_date": data['planting_date']
+            },
+            "message": "Crop added to field successfully"
+        }), 201
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/fields/<field_id>/crops/<crop_id>', methods=['PUT'])
+def update_crop_record(field_id: str, crop_id: str):
+    """Update crop record (e.g., add harvesting date, yield)"""
+    try:
+        data = request.get_json()
+        
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        # Check if crop record exists
+        cursor.execute('SELECT * FROM crop_history WHERE id = ? AND field_id = ?', 
+                      (crop_id, field_id))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({
+                "success": False,
+                "error": "Crop record not found"
+            }), 404
+        
+        # Update crop record
+        cursor.execute('''
+            UPDATE crop_history 
+            SET crop_name = ?, planting_date = ?, harvesting_date = ?, 
+                yield_kg = ?, notes = ?
+            WHERE id = ? AND field_id = ?
+        ''', (
+            data.get('crop_name'),
+            data.get('planting_date'),
+            data.get('harvesting_date'),
+            data.get('yield_kg'),
+            data.get('notes'),
+            crop_id,
+            field_id
+        ))
+        
+                    conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+        
+        return jsonify({
+            "success": True,
+            "message": "Crop record updated successfully"
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/soil-types', methods=['GET'])
+def get_soil_types():
+    """Get available soil types and their characteristics"""
+    return jsonify({
+        "success": True,
+        "data": {
+            "soil_types": SOIL_TYPES,
+            "total_types": len(SOIL_TYPES)
+        }
+    })
+
+@app.route('/fields/<field_id>/recommendations', methods=['GET'])
+def get_field_recommendations(field_id: str):
+    """Get crop recommendations for a specific field based on soil and conditions"""
+    try:
+        field = get_field_by_id(field_id)
+        if not field:
+            return jsonify({
+                "success": False,
+                "error": "Field not found"
+            }), 404
+        
+        # Get soil type info
+        soil_info = SOIL_TYPES.get(field['soil_type'], {})
+        suitable_crops = soil_info.get('suitable_crops', [])
+        
+        # Get recent crop history to avoid suggesting same crops
+        crop_history = get_field_crop_history(field_id)
+        recent_crops = [crop['crop_name'] for crop in crop_history[:3]]
+        
+        # Filter out recently planted crops
+        recommended_crops = [crop for crop in suitable_crops if crop not in recent_crops]
+        
+        # Add general recommendations based on soil pH
+        ph = field['soil_ph']
+        if ph < 6.0:
+            ph_recommendations = ["Potato", "Cabbage", "Rice"]
+        elif ph > 7.5:
+            ph_recommendations = ["Wheat", "Barley", "Alfalfa"]
+        else:
+            ph_recommendations = ["Maize", "Cotton", "Sugarcane"]
+        
+        # Combine recommendations
+        all_recommendations = list(set(recommended_crops + ph_recommendations))
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "field": field,
+                "soil_analysis": {
+                    "soil_type": field['soil_type'],
+                    "soil_ph": field['soil_ph'],
+                    "soil_moisture": field['soil_moisture'],
+                    "ph_status": "Acidic" if ph < 6.0 else "Alkaline" if ph > 7.5 else "Neutral"
+                },
+                "recommendations": {
+                    "suitable_crops": recommended_crops,
+                    "ph_based_crops": ph_recommendations,
+                    "all_recommendations": all_recommendations,
+                    "avoid_crops": recent_crops
+                },
+                "field_conditions": {
+                    "area_hectares": field['area_hectares'],
+                    "elevation": field['elevation'],
+                    "last_updated": field['updated_at']
+                }
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+if __name__ == '__main__':
+    print("🌾 Field Management API Starting...")
+    print(f"📊 Database: {DB_NAME}")
+    print(f"🌍 Available soil types: {len(SOIL_TYPES)}")
+    print("🚀 Server running on http://0.0.0.0:5002")
+    print("📱 Android emulator can access via http://10.0.2.2:5002")
+    app.run(debug=True, host='0.0.0.0', port=5002)

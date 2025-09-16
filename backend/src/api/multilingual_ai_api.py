@@ -1,0 +1,652 @@
+"""
+Multilingual AI Chat and Voice Interface API
+Supports local languages with voice recognition and text-to-speech
+"""
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import json
+import numpy as np
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
+import os
+import logging
+import re
+import random
+
+
+
+# PostgreSQL Database Configuration
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from contextlib import contextmanager
+
+# Database configuration
+DATABASE_CONFIG = {
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'port': os.getenv('DB_PORT', '5432'),
+    'database': os.getenv('DB_NAME', 'harvest_enterprise'),
+    'user': os.getenv('DB_USER', 'postgres'),
+    'password': os.getenv('DB_PASSWORD', 'K@shmir2442')
+}
+
+@contextmanager
+def get_db_connection():
+    """Get PostgreSQL database connection with proper error handling"""
+    conn = None
+    try:
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        conn.autocommit = False
+        yield conn
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise e
+    finally:
+        if conn:
+            conn.close()
+
+@contextmanager
+def get_db_cursor():
+    """Get PostgreSQL database cursor with proper error handling"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            yield cursor, conn
+        finally:
+            cursor.close()
+
+
+# Fix import paths for direct execution
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+
+app = Flask(__name__)
+CORS(app)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Database setup
+# DB_NAME replaced with DATABASE_CONFIG
+
+# Supported languages
+SUPPORTED_LANGUAGES = {
+    'en': 'English',
+    'hi': 'Hindi',
+    'bn': 'Bengali',
+    'te': 'Telugu',
+    'mr': 'Marathi',
+    'ta': 'Tamil',
+    'gu': 'Gujarati',
+    'kn': 'Kannada',
+    'ml': 'Malayalam',
+    'pa': 'Punjabi',
+    'or': 'Odia',
+    'as': 'Assamese'
+}
+
+# Agricultural knowledge base in multiple languages
+AGRICULTURAL_KNOWLEDGE = {
+    'en': {
+        'greetings': ['Hello', 'Hi', 'Good morning', 'Good afternoon', 'Good evening'],
+        'crop_questions': [
+            'What crop should I plant?',
+            'When should I sow seeds?',
+            'How much water does this crop need?',
+            'What fertilizer should I use?',
+            'How to control pests?',
+            'What is the best time to harvest?'
+        ],
+        'responses': {
+            'crop_recommendation': 'Based on your soil and weather conditions, I recommend planting {crop}. This crop is suitable for your area and current season.',
+            'sowing_time': 'The best time to sow {crop} is {time}. Make sure the soil temperature is around {temp}°C.',
+            'water_requirement': '{crop} needs {water} mm of water per week. Water in the early morning for best results.',
+            'fertilizer': 'For {crop}, use {fertilizer} at the rate of {rate} kg per hectare.',
+            'pest_control': 'To control pests in {crop}, use {pesticide} or try organic methods like neem oil.',
+            'harvest_time': '{crop} is ready for harvest in {days} days. Look for {indicators} as signs of maturity.'
+        }
+    },
+    'hi': {
+        'greetings': ['नमस्ते', 'हैलो', 'सुप्रभात', 'शुभ दोपहर', 'शुभ संध्या'],
+        'crop_questions': [
+            'मुझे कौन सी फसल लगानी चाहिए?',
+            'बीज कब बोने चाहिए?',
+            'इस फसल को कितना पानी चाहिए?',
+            'कौन सा उर्वरक इस्तेमाल करूं?',
+            'कीटों को कैसे नियंत्रित करूं?',
+            'कटाई का सबसे अच्छा समय क्या है?'
+        ],
+        'responses': {
+            'crop_recommendation': 'आपकी मिट्टी और मौसम की स्थिति के आधार पर, मैं {crop} लगाने की सलाह देता हूं। यह फसल आपके क्षेत्र और वर्तमान मौसम के लिए उपयुक्त है।',
+            'sowing_time': '{crop} बोने का सबसे अच्छा समय {time} है। सुनिश्चित करें कि मिट्टी का तापमान {temp}°C के आसपास हो।',
+            'water_requirement': '{crop} को प्रति सप्ताह {water} मिमी पानी की आवश्यकता है। सबसे अच्छे परिणाम के लिए सुबह जल्दी पानी दें।',
+            'fertilizer': '{crop} के लिए, {fertilizer} का उपयोग {rate} किलो प्रति हेक्टेयर की दर से करें।',
+            'pest_control': '{crop} में कीटों को नियंत्रित करने के लिए, {pesticide} का उपयोग करें या नीम तेल जैसे जैविक तरीके आजमाएं।',
+            'harvest_time': '{crop} {days} दिनों में कटाई के लिए तैयार है। परिपक्वता के संकेत के रूप में {indicators} देखें।'
+        }
+    },
+    'bn': {
+        'greetings': ['নমস্কার', 'হ্যালো', 'সুপ্রভাত', 'শুভ দুপুর', 'শুভ সন্ধ্যা'],
+        'crop_questions': [
+            'আমার কোন ফসল লাগানো উচিত?',
+            'বীজ কখন বপন করব?',
+            'এই ফসলে কত জল লাগে?',
+            'কোন সার ব্যবহার করব?',
+            'পোকামাকড় কীভাবে নিয়ন্ত্রণ করব?',
+            'ফসল কাটার সবচেয়ে ভাল সময় কখন?'
+        ],
+        'responses': {
+            'crop_recommendation': 'আপনার মাটি এবং আবহাওয়ার অবস্থার ভিত্তিতে, আমি {crop} লাগানোর পরামর্শ দিচ্ছি। এই ফসল আপনার এলাকা এবং বর্তমান মৌসুমের জন্য উপযুক্ত।',
+            'sowing_time': '{crop} বপনের সেরা সময় {time}। নিশ্চিত করুন যে মাটির তাপমাত্রা {temp}°C এর কাছাকাছি।',
+            'water_requirement': '{crop} এর জন্য প্রতি সপ্তাহে {water} মিমি জল প্রয়োজন। সেরা ফলাফলের জন্য সকালে জল দিন।',
+            'fertilizer': '{crop} এর জন্য, {fertilizer} হেক্টর প্রতি {rate} কেজি হারে ব্যবহার করুন।',
+            'pest_control': '{crop} এ পোকামাকড় নিয়ন্ত্রণের জন্য, {pesticide} ব্যবহার করুন বা নিম তেলের মতো জৈব পদ্ধতি চেষ্টা করুন।',
+            'harvest_time': '{crop} {days} দিনে কাটার জন্য প্রস্তুত। পরিপক্কতার লক্ষণ হিসাবে {indicators} দেখুন।'
+        }
+    }
+}
+
+# Crop information database
+CROP_DATABASE = {
+    'Rice': {
+        'sowing_time': 'June-July',
+        'water_requirement': 1000,
+        'fertilizer': 'NPK 20-20-20',
+        'fertilizer_rate': 100,
+        'pesticide': 'Chlorpyrifos',
+        'harvest_days': 120,
+        'maturity_indicators': 'golden color, firm grains',
+        'temperature': 25
+    },
+    'Wheat': {
+        'sowing_time': 'October-November',
+        'water_requirement': 500,
+        'fertilizer': 'Urea + DAP',
+        'fertilizer_rate': 80,
+        'pesticide': 'Imidacloprid',
+        'harvest_days': 150,
+        'maturity_indicators': 'golden color, dry stems',
+        'temperature': 20
+    },
+    'Maize': {
+        'sowing_time': 'March-April',
+        'water_requirement': 600,
+        'fertilizer': 'NPK 15-15-15',
+        'fertilizer_rate': 90,
+        'pesticide': 'Carbaryl',
+        'harvest_days': 90,
+        'maturity_indicators': 'dry husks, hard kernels',
+        'temperature': 22
+    },
+    'Cotton': {
+        'sowing_time': 'April-May',
+        'water_requirement': 800,
+        'fertilizer': 'NPK 12-24-12',
+        'fertilizer_rate': 120,
+        'pesticide': 'Acephate',
+        'harvest_days': 180,
+        'maturity_indicators': 'open bolls, white fibers',
+        'temperature': 28
+    }
+}
+
+def init_database():
+    """Initialize database tables using PostgreSQL"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+    
+    # Chat history table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR NOT NULL,
+            language VARCHAR NOT NULL,
+            user_message VARCHAR NOT NULL,
+            bot_response VARCHAR NOT NULL,
+            intent VARCHAR,
+            confidence FLOAT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Voice data table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS voice_data (
+            id VARCHAR PRIMARY KEY,
+            user_id VARCHAR NOT NULL,
+            language VARCHAR NOT NULL,
+            audio_file_path VARCHAR,
+            transcribed_text VARCHAR,
+            response_text VARCHAR,
+            audio_response_path VARCHAR,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # User preferences table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            user_id VARCHAR PRIMARY KEY,
+            preferred_language VARCHAR NOT NULL,
+            voice_enabled BOOLEAN DEFAULT TRUE,
+            location VARCHAR,
+            farming_experience VARCHAR,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+                conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+
+# Initialize database
+init_database()
+
+def detect_language(text: str) -> str:
+    """Detect language from text"""
+    # Simple language detection based on character patterns
+    if re.search(r'[\u0900-\u097F]', text):  # Devanagari script
+        return 'hi'
+    elif re.search(r'[\u0980-\u09FF]', text):  # Bengali script
+        return 'bn'
+    elif re.search(r'[\u0A00-\u0A7F]', text):  # Gurmukhi script
+        return 'pa'
+    elif re.search(r'[\u0A80-\u0AFF]', text):  # Gujarati script
+        return 'gu'
+    elif re.search(r'[\u0B00-\u0B7F]', text):  # Oriya script
+        return 'or'
+    elif re.search(r'[\u0B80-\u0BFF]', text):  # Tamil script
+        return 'ta'
+    elif re.search(r'[\u0C00-\u0C7F]', text):  # Telugu script
+        return 'te'
+    elif re.search(r'[\u0C80-\u0CFF]', text):  # Kannada script
+        return 'kn'
+    elif re.search(r'[\u0D00-\u0D7F]', text):  # Malayalam script
+        return 'ml'
+    else:
+        return 'en'  # Default to English
+
+def extract_intent(text: str, language: str) -> Tuple[str, float]:
+    """Extract intent from user message"""
+    text_lower = text.lower()
+    
+    # Define intent patterns
+    intent_patterns = {
+        'crop_recommendation': [
+            'crop', 'plant', 'grow', 'sow', 'फसल', 'बोना', 'লাগানো', 'বপন'
+        ],
+        'sowing_time': [
+            'when', 'time', 'sow', 'plant', 'कब', 'समय', 'বপন', 'সময়'
+        ],
+        'water_requirement': [
+            'water', 'irrigation', 'पानी', 'सिंचाई', 'জল', 'সেচ'
+        ],
+        'fertilizer': [
+            'fertilizer', 'manure', 'nutrient', 'सर', 'उर्वरक', 'সার', 'পুষ্টি'
+        ],
+        'pest_control': [
+            'pest', 'insect', 'disease', 'कीट', 'रोग', 'পোকা', 'রোগ'
+        ],
+        'harvest_time': [
+            'harvest', 'cut', 'pick', 'कटाई', 'तोड़ना', 'কাটা', 'ফসল'
+        ],
+        'greeting': [
+            'hello', 'hi', 'namaste', 'नमस्ते', 'নমস্কার'
+        ]
+    }
+    
+    # Check for intent patterns
+    for intent, patterns in intent_patterns.items():
+        for pattern in patterns:
+            if pattern in text_lower:
+                return intent, 0.8
+    
+    return 'general', 0.5
+
+def generate_response(intent: str, language: str, context: Dict = None) -> str:
+    """Generate response based on intent and language"""
+    if language not in AGRICULTURAL_KNOWLEDGE:
+        language = 'en'
+    
+    knowledge = AGRICULTURAL_KNOWLEDGE[language]
+    
+    if intent == 'greeting':
+        return random.choice(knowledge['greetings'])
+    
+    elif intent == 'crop_recommendation':
+        crop = context.get('recommended_crop', 'Rice') if context else 'Rice'
+        return knowledge['responses']['crop_recommendation'].format(crop=crop)
+    
+    elif intent == 'sowing_time':
+        crop = context.get('crop', 'Rice') if context else 'Rice'
+        crop_info = CROP_DATABASE.get(crop, CROP_DATABASE['Rice'])
+        return knowledge['responses']['sowing_time'].format(
+            crop=crop,
+            time=crop_info['sowing_time'],
+            temp=crop_info['temperature']
+        )
+    
+    elif intent == 'water_requirement':
+        crop = context.get('crop', 'Rice') if context else 'Rice'
+        crop_info = CROP_DATABASE.get(crop, CROP_DATABASE['Rice'])
+        return knowledge['responses']['water_requirement'].format(
+            crop=crop,
+            water=crop_info['water_requirement']
+        )
+    
+    elif intent == 'fertilizer':
+        crop = context.get('crop', 'Rice') if context else 'Rice'
+        crop_info = CROP_DATABASE.get(crop, CROP_DATABASE['Rice'])
+        return knowledge['responses']['fertilizer'].format(
+            crop=crop,
+            fertilizer=crop_info['fertilizer'],
+            rate=crop_info['fertilizer_rate']
+        )
+    
+    elif intent == 'pest_control':
+        crop = context.get('crop', 'Rice') if context else 'Rice'
+        crop_info = CROP_DATABASE.get(crop, CROP_DATABASE['Rice'])
+        return knowledge['responses']['pest_control'].format(
+            crop=crop,
+            pesticide=crop_info['pesticide']
+        )
+    
+    elif intent == 'harvest_time':
+        crop = context.get('crop', 'Rice') if context else 'Rice'
+        crop_info = CROP_DATABASE.get(crop, CROP_DATABASE['Rice'])
+        return knowledge['responses']['harvest_time'].format(
+            crop=crop,
+            days=crop_info['harvest_days'],
+            indicators=crop_info['maturity_indicators']
+        )
+    
+    else:
+        # General response
+        return "I'm here to help with your farming questions. Please ask me about crops, weather, soil, or any agricultural topic."
+
+def store_chat_history(user_id: str, language: str, user_message: str, 
+                      bot_response: str, intent: str, confidence: float):
+    """Store chat history in database"""
+    conn = psycopg2.connect(**DATABASE_CONFIG)
+    cursor = conn.cursor()
+    
+    chat_id = f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(user_message) % 10000}"
+    
+    cursor.execute('''
+        INSERT INTO chat_history 
+        (id, user_id, language, user_message, bot_response, intent, confidence)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (chat_id, user_id, language, user_message, bot_response, intent, confidence))
+    
+                conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+
+# API Endpoints
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        "success": True,
+        "message": "Multilingual AI Chat API is running",
+        "timestamp": datetime.now().isoformat(),
+        "supported_languages": list(SUPPORTED_LANGUAGES.keys()),
+        "features": [
+            "Text chat in 12+ languages",
+            "Voice recognition and synthesis",
+            "Agricultural knowledge base",
+            "Intent detection",
+            "Context-aware responses"
+        ]
+    })
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    """Handle text chat messages"""
+    try:
+        data = request.get_json()
+        
+        user_id = data.get('user_id', 'anonymous')
+        message = data.get('message', '')
+        language = data.get('language', 'auto')
+        context = data.get('context', {})
+        
+        if not message:
+            return jsonify({
+                "success": False,
+                "error": "Message is required"
+            }), 400
+        
+        # Auto-detect language if not specified
+        if language == 'auto':
+            language = detect_language(message)
+        
+        # Extract intent
+        intent, confidence = extract_intent(message, language)
+        
+        # Generate response
+        response = generate_response(intent, language, context)
+        
+        # Store chat history
+        store_chat_history(user_id, language, message, response, intent, confidence)
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "response": response,
+                "language": language,
+                "intent": intent,
+                "confidence": confidence,
+                "timestamp": datetime.now().isoformat()
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Chat error: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/voice/transcribe', methods=['POST'])
+def transcribe_voice():
+    """Transcribe voice to text"""
+    try:
+        # In a real implementation, this would process audio files
+        # For demo purposes, we'll simulate transcription
+        data = request.get_json()
+        
+        user_id = data.get('user_id', 'anonymous')
+        language = data.get('language', 'en')
+        audio_data = data.get('audio_data', '')  # Base64 encoded audio
+        
+        # Simulate transcription (in real app, use Google Speech-to-Text or similar)
+        sample_transcriptions = {
+            'en': ['What crop should I plant?', 'When should I sow seeds?', 'How much water does this crop need?'],
+            'hi': ['मुझे कौन सी फसल लगानी चाहिए?', 'बीज कब बोने चाहिए?', 'इस फसल को कितना पानी चाहिए?'],
+            'bn': ['আমার কোন ফসল লাগানো উচিত?', 'বীজ কখন বপন করব?', 'এই ফসলে কত জল লাগে?']
+        }
+        
+        transcribed_text = random.choice(sample_transcriptions.get(language, sample_transcriptions['en']))
+        
+        # Store voice data
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        voice_id = f"voice_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(audio_data) % 10000}"
+        
+        cursor.execute('''
+            INSERT INTO voice_data 
+            (id, user_id, language, audio_file_path, transcribed_text)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (voice_id, user_id, language, 'audio_file_path', transcribed_text))
+        
+                    conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "transcribed_text": transcribed_text,
+                "language": language,
+                "confidence": 0.85,
+                "timestamp": datetime.now().isoformat()
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Voice transcription error: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/voice/synthesize', methods=['POST'])
+def synthesize_voice():
+    """Convert text to speech"""
+    try:
+        data = request.get_json()
+        
+        text = data.get('text', '')
+        language = data.get('language', 'en')
+        voice_id = data.get('voice_id', '')
+        
+        if not text:
+            return jsonify({
+                "success": False,
+                "error": "Text is required"
+            }), 400
+        
+        # In a real implementation, this would generate audio files
+        # For demo purposes, we'll return a simulated audio file path
+        audio_file_path = f"audio_output_{voice_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "audio_file_path": audio_file_path,
+                "text": text,
+                "language": language,
+                "duration": len(text) * 0.1,  # Simulated duration
+                "timestamp": datetime.now().isoformat()
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Voice synthesis error: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/languages', methods=['GET'])
+def get_supported_languages():
+    """Get list of supported languages"""
+    return jsonify({
+        "success": True,
+        "data": {
+            "languages": SUPPORTED_LANGUAGES,
+            "total_languages": len(SUPPORTED_LANGUAGES)
+        }
+    })
+
+@app.route('/chat/history', methods=['GET'])
+def get_chat_history():
+    """Get chat history for a user"""
+    try:
+        user_id = request.args.get('user_id', 'anonymous')
+        language = request.args.get('language')
+        limit = int(request.args.get('limit', 50))
+        
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        query = '''
+            SELECT * FROM chat_history 
+            WHERE user_id = ?
+        '''
+        params = [user_id]
+        
+        if language:
+            query += ' AND language = ?'
+            params.append(language)
+        
+        query += ' ORDER BY timestamp DESC LIMIT ?'
+        params.append(limit)
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        history = []
+        for row in rows:
+            history.append({
+                'id': row[0],
+                'user_id': row[1],
+                'language': row[2],
+                'user_message': row[3],
+                'bot_response': row[4],
+                'intent': row[5],
+                'confidence': row[6],
+                'timestamp': row[7]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "chat_history": history,
+                "total_messages": len(history)
+            }
+        })
+    
+    except Exception as e:
+        logger.error(f"Error getting chat history: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/knowledge/crops', methods=['GET'])
+def get_crop_knowledge():
+    """Get crop information"""
+    language = request.args.get('language', 'en')
+    crop = request.args.get('crop')
+    
+    if crop and crop in CROP_DATABASE:
+        crop_info = CROP_DATABASE[crop]
+        return jsonify({
+            "success": True,
+            "data": {
+                "crop": crop,
+                "information": crop_info,
+                "language": language
+            }
+        })
+    else:
+        return jsonify({
+            "success": True,
+            "data": {
+                "available_crops": list(CROP_DATABASE.keys()),
+                "language": language
+            }
+        })
+
+if __name__ == '__main__':
+    print("🗣️ Multilingual AI Chat API Starting...")
+    print(f"📊 Database: {DB_NAME}")
+    print(f"🌍 Supported languages: {len(SUPPORTED_LANGUAGES)}")
+    print(f"🌾 Crop database: {len(CROP_DATABASE)} crops")
+    print("🚀 Server running on http://0.0.0.0:5007")
+    print("📱 Android emulator can access via http://10.0.2.2:5007")
+    app.run(debug=True, host='0.0.0.0', port=5007)

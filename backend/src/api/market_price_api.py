@@ -1,0 +1,674 @@
+"""
+Market Price Prediction & Profit Calculator API
+Provides real-time market prices, price predictions, and profit calculations for crops
+"""
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import json
+import numpy as np
+import pandas as pd
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
+import requests
+import random
+
+
+
+# PostgreSQL Database Configuration
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from contextlib import contextmanager
+
+# Database configuration
+DATABASE_CONFIG = {
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'port': os.getenv('DB_PORT', '5432'),
+    'database': os.getenv('DB_NAME', 'harvest_enterprise'),
+    'user': os.getenv('DB_USER', 'postgres'),
+    'password': os.getenv('DB_PASSWORD', 'K@shmir2442')
+}
+
+@contextmanager
+def get_db_connection():
+    """Get PostgreSQL database connection with proper error handling"""
+    conn = None
+    try:
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        conn.autocommit = False
+        yield conn
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise e
+    finally:
+        if conn:
+            conn.close()
+
+@contextmanager
+def get_db_cursor():
+    """Get PostgreSQL database cursor with proper error handling"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            yield cursor, conn
+        finally:
+            cursor.close()
+
+
+# Fix import paths for direct execution
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+
+app = Flask(__name__)
+CORS(app)
+
+# Database setup
+# DB_NAME replaced with DATABASE_CONFIG
+
+def init_database():
+    """Initialize database tables using PostgreSQL"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+    
+    # Market prices table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS market_prices (
+            id VARCHAR PRIMARY KEY,
+            crop_name VARCHAR NOT NULL,
+            price_per_kg FLOAT NOT NULL,
+            market_name VARCHAR NOT NULL,
+            state VARCHAR NOT NULL,
+            date DATE NOT NULL,
+            price_type VARCHAR NOT NULL,
+            source VARCHAR,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Price predictions table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS price_predictions (
+            id VARCHAR PRIMARY KEY,
+            crop_name VARCHAR NOT NULL,
+            predicted_price FLOAT NOT NULL,
+            confidence_score FLOAT NOT NULL,
+            prediction_date DATE NOT NULL,
+            target_date DATE NOT NULL,
+            market_name VARCHAR,
+            state VARCHAR,
+            factors VARCHAR,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Profit calculations table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS profit_calculations (
+            id VARCHAR PRIMARY KEY,
+            crop_name VARCHAR NOT NULL,
+            yield_prediction FLOAT NOT NULL,
+            area_hectares FLOAT NOT NULL,
+            market_price FLOAT NOT NULL,
+            total_revenue FLOAT NOT NULL,
+            production_cost FLOAT NOT NULL,
+            net_profit FLOAT NOT NULL,
+            profit_margin FLOAT NOT NULL,
+            calculation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+                conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+
+# Initialize database
+init_database()
+
+# Market price data (simulated real-time data)
+MARKET_PRICES = {
+    'Rice': {
+        'baseline_price': 25.0,
+        'price_range': (20, 35),
+        'seasonal_adjustment': 0.15,
+        'market_demand': 'high'
+    },
+    'Wheat': {
+        'baseline_price': 22.0,
+        'price_range': (18, 28),
+        'seasonal_adjustment': 0.12,
+        'market_demand': 'high'
+    },
+    'Maize': {
+        'baseline_price': 18.0,
+        'price_range': (15, 25),
+        'seasonal_adjustment': 0.10,
+        'market_demand': 'medium'
+    },
+    'Cotton': {
+        'baseline_price': 65.0,
+        'price_range': (55, 80),
+        'seasonal_adjustment': 0.20,
+        'market_demand': 'high'
+    },
+    'Sugarcane': {
+        'baseline_price': 3.2,
+        'price_range': (2.8, 4.0),
+        'seasonal_adjustment': 0.08,
+        'market_demand': 'medium'
+    },
+    'Potato': {
+        'baseline_price': 15.0,
+        'price_range': (12, 20),
+        'seasonal_adjustment': 0.25,
+        'market_demand': 'medium'
+    },
+    'Tomato': {
+        'baseline_price': 35.0,
+        'price_range': (25, 50),
+        'seasonal_adjustment': 0.30,
+        'market_demand': 'high'
+    },
+    'Onion': {
+        'baseline_price': 28.0,
+        'price_range': (20, 40),
+        'seasonal_adjustment': 0.35,
+        'market_demand': 'high'
+    }
+}
+
+# Production cost estimates (per hectare)
+PRODUCTION_COSTS = {
+    'Rice': {
+        'seeds': 2500,
+        'fertilizers': 8000,
+        'pesticides': 3000,
+        'labor': 12000,
+        'machinery': 5000,
+        'irrigation': 2000,
+        'other': 1500
+    },
+    'Wheat': {
+        'seeds': 2000,
+        'fertilizers': 6000,
+        'pesticides': 2500,
+        'labor': 8000,
+        'machinery': 4000,
+        'irrigation': 1500,
+        'other': 1000
+    },
+    'Maize': {
+        'seeds': 3000,
+        'fertilizers': 7000,
+        'pesticides': 3500,
+        'labor': 10000,
+        'machinery': 4500,
+        'irrigation': 1800,
+        'other': 1200
+    },
+    'Cotton': {
+        'seeds': 4000,
+        'fertilizers': 10000,
+        'pesticides': 8000,
+        'labor': 15000,
+        'machinery': 6000,
+        'irrigation': 3000,
+        'other': 2000
+    },
+    'Sugarcane': {
+        'seeds': 5000,
+        'fertilizers': 12000,
+        'pesticides': 4000,
+        'labor': 20000,
+        'machinery': 8000,
+        'irrigation': 4000,
+        'other': 3000
+    },
+    'Potato': {
+        'seeds': 8000,
+        'fertilizers': 6000,
+        'pesticides': 4000,
+        'labor': 12000,
+        'machinery': 3000,
+        'irrigation': 2000,
+        'other': 1500
+    },
+    'Tomato': {
+        'seeds': 2000,
+        'fertilizers': 5000,
+        'pesticides': 6000,
+        'labor': 15000,
+        'machinery': 2000,
+        'irrigation': 3000,
+        'other': 2000
+    },
+    'Onion': {
+        'seeds': 1500,
+        'fertilizers': 4000,
+        'pesticides': 3000,
+        'labor': 10000,
+        'machinery': 2000,
+        'irrigation': 2000,
+        'other': 1500
+    }
+}
+
+def get_current_market_price(crop_name: str, state: str = "All India") -> Dict:
+    """Get current market price for a crop"""
+    if crop_name not in MARKET_PRICES:
+        crop_name = 'Rice'  # Default fallback
+    
+    price_data = MARKET_PRICES[crop_name]
+    baseline = price_data['baseline_price']
+    price_range = price_data['price_range']
+    
+    # Simulate price variation based on market conditions
+    variation = random.uniform(-0.1, 0.1)  # ±10% variation
+    current_price = baseline * (1 + variation)
+    
+    # Ensure price is within realistic range
+    current_price = max(price_range[0], min(price_range[1], current_price))
+    
+    return {
+        'crop_name': crop_name,
+        'current_price': round(current_price, 2),
+        'price_range': price_range,
+        'market_demand': price_data['market_demand'],
+        'state': state,
+        'date': datetime.now().strftime('%Y-%m-%d'),
+        'price_type': 'wholesale'
+    }
+
+def predict_market_price(crop_name: str, days_ahead: int = 30) -> Dict:
+    """Predict market price for a crop"""
+    if crop_name not in MARKET_PRICES:
+        crop_name = 'Rice'
+    
+    price_data = MARKET_PRICES[crop_name]
+    baseline = price_data['baseline_price']
+    seasonal_adj = price_data['seasonal_adjustment']
+    
+    # Simple prediction model (in real app, use ML models)
+    # Factors: seasonal trends, market demand, historical patterns
+    seasonal_factor = 1 + (seasonal_adj * np.sin(days_ahead / 30 * 2 * np.pi))
+    demand_factor = 1.1 if price_data['market_demand'] == 'high' else 1.0
+    
+    predicted_price = baseline * seasonal_factor * demand_factor
+    
+    # Add some randomness for realism
+    noise = random.uniform(-0.05, 0.05)
+    predicted_price *= (1 + noise)
+    
+    confidence = max(0.6, 1.0 - (days_ahead / 90))  # Confidence decreases with time
+    
+    return {
+        'crop_name': crop_name,
+        'predicted_price': round(predicted_price, 2),
+        'confidence_score': round(confidence, 3),
+        'prediction_date': datetime.now().strftime('%Y-%m-%d'),
+        'target_date': (datetime.now() + timedelta(days=days_ahead)).strftime('%Y-%m-%d'),
+        'factors': {
+            'seasonal_trend': round(seasonal_factor, 3),
+            'market_demand': price_data['market_demand'],
+            'days_ahead': days_ahead
+        }
+    }
+
+def calculate_profit(crop_name: str, yield_kg: float, area_hectares: float, 
+                    market_price: float = None) -> Dict:
+    """Calculate profit for a crop"""
+    if crop_name not in PRODUCTION_COSTS:
+        crop_name = 'Rice'
+    
+    # Get market price if not provided
+    if market_price is None:
+        price_data = get_current_market_price(crop_name)
+        market_price = price_data['current_price']
+    
+    # Calculate total revenue
+    total_revenue = yield_kg * market_price
+    
+    # Calculate production costs
+    cost_data = PRODUCTION_COSTS[crop_name]
+    total_cost = sum(cost_data.values()) * area_hectares
+    
+    # Calculate profit
+    net_profit = total_revenue - total_cost
+    profit_margin = (net_profit / total_revenue * 100) if total_revenue > 0 else 0
+    
+    # Cost breakdown
+    cost_breakdown = {
+        'seeds': cost_data['seeds'] * area_hectares,
+        'fertilizers': cost_data['fertilizers'] * area_hectares,
+        'pesticides': cost_data['pesticides'] * area_hectares,
+        'labor': cost_data['labor'] * area_hectares,
+        'machinery': cost_data['machinery'] * area_hectares,
+        'irrigation': cost_data['irrigation'] * area_hectares,
+        'other': cost_data['other'] * area_hectares
+    }
+    
+    return {
+        'crop_name': crop_name,
+        'yield_kg': yield_kg,
+        'area_hectares': area_hectares,
+        'market_price': market_price,
+        'total_revenue': round(total_revenue, 2),
+        'total_cost': round(total_cost, 2),
+        'net_profit': round(net_profit, 2),
+        'profit_margin': round(profit_margin, 2),
+        'cost_breakdown': cost_breakdown,
+        'calculation_date': datetime.now().strftime('%Y-%m-%d')
+    }
+
+# API Endpoints
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        "success": True,
+        "message": "Market Price API is running",
+        "timestamp": datetime.now().isoformat(),
+        "available_crops": len(MARKET_PRICES)
+    })
+
+@app.route('/price/current', methods=['GET'])
+def get_current_price():
+    """Get current market price for a crop"""
+    try:
+        crop_name = request.args.get('crop', 'Rice')
+        state = request.args.get('state', 'All India')
+        
+        price_data = get_current_market_price(crop_name, state)
+        
+        # Store in database
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        price_id = f"price_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(crop_name) % 10000}"
+        
+        cursor.execute('''
+            INSERT INTO market_prices 
+            (id, crop_name, price_per_kg, market_name, state, date, price_type, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            price_id,
+            crop_name,
+            price_data['current_price'],
+            'Wholesale Market',
+            state,
+            price_data['date'],
+            price_data['price_type'],
+            'API'
+        ))
+        
+                    conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+        
+        return jsonify({
+            "success": True,
+            "data": price_data
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/price/predict', methods=['POST'])
+def predict_price():
+    """Predict future market price"""
+    try:
+        data = request.get_json()
+        crop_name = data.get('crop_name', 'Rice')
+        days_ahead = data.get('days_ahead', 30)
+        
+        prediction = predict_market_price(crop_name, days_ahead)
+        
+        # Store prediction in database
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        pred_id = f"pred_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(crop_name) % 10000}"
+        
+        cursor.execute('''
+            INSERT INTO price_predictions 
+            (id, crop_name, predicted_price, confidence_score, prediction_date, 
+             target_date, market_name, state, factors)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            pred_id,
+            crop_name,
+            prediction['predicted_price'],
+            prediction['confidence_score'],
+            prediction['prediction_date'],
+            prediction['target_date'],
+            'Wholesale Market',
+            'All India',
+            json.dumps(prediction['factors'])
+        ))
+        
+                    conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+        
+        return jsonify({
+            "success": True,
+            "data": prediction
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/profit/calculate', methods=['POST'])
+def calculate_profit_endpoint():
+    """Calculate profit for a crop"""
+    try:
+        data = request.get_json()
+        
+        required_fields = ['crop_name', 'yield_kg', 'area_hectares']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    "success": False,
+                    "error": f"Missing required field: {field}"
+                }), 400
+        
+        profit_data = calculate_profit(
+            data['crop_name'],
+            data['yield_kg'],
+            data['area_hectares'],
+            data.get('market_price')
+        )
+        
+        # Store calculation in database
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        calc_id = f"calc_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(str(data)) % 10000}"
+        
+        cursor.execute('''
+            INSERT INTO profit_calculations 
+            (id, crop_name, yield_prediction, area_hectares, market_price,
+             total_revenue, production_cost, net_profit, profit_margin)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            calc_id,
+            data['crop_name'],
+            data['yield_kg'],
+            data['area_hectares'],
+            profit_data['market_price'],
+            profit_data['total_revenue'],
+            profit_data['total_cost'],
+            profit_data['net_profit'],
+            profit_data['profit_margin']
+        ))
+        
+                    conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        raise e
+        
+        return jsonify({
+            "success": True,
+            "data": profit_data
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/crops', methods=['GET'])
+def get_available_crops():
+    """Get list of crops with price information"""
+    return jsonify({
+        "success": True,
+        "data": {
+            "crops": MARKET_PRICES,
+            "production_costs": PRODUCTION_COSTS,
+            "total_crops": len(MARKET_PRICES)
+        }
+    })
+
+@app.route('/prices/history', methods=['GET'])
+def get_price_history():
+    """Get historical price data"""
+    try:
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        crop_name = request.args.get('crop_name')
+        days = int(request.args.get('days', 30))
+        
+        query = '''
+            SELECT * FROM market_prices 
+            WHERE date >= date('now', '-{} days')
+        '''.format(days)
+        
+        params = []
+        if crop_name:
+            query += ' AND crop_name = ?'
+            params.append(crop_name)
+        
+        query += ' ORDER BY date DESC'
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        history = []
+        for row in rows:
+            history.append({
+                'id': row[0],
+                'crop_name': row[1],
+                'price_per_kg': row[2],
+                'market_name': row[3],
+                'state': row[4],
+                'date': row[5],
+                'price_type': row[6],
+                'source': row[7],
+                'created_at': row[8]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "price_history": history,
+                "total_records": len(history)
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/analytics', methods=['GET'])
+def get_market_analytics():
+    """Get market analytics and insights"""
+    try:
+        conn = psycopg2.connect(**DATABASE_CONFIG)
+        cursor = conn.cursor()
+        
+        # Get price trends
+        cursor.execute('''
+            SELECT crop_name, AVG(price_per_kg) as avg_price, 
+                   MIN(price_per_kg) as min_price, MAX(price_per_kg) as max_price,
+                   COUNT(*) as record_count
+            FROM market_prices 
+            WHERE date >= date('now', '-30 days')
+            GROUP BY crop_name
+        ''')
+        
+        price_trends = []
+        for row in cursor.fetchall():
+            price_trends.append({
+                'crop_name': row[0],
+                'avg_price': round(row[1], 2),
+                'min_price': round(row[2], 2),
+                'max_price': round(row[3], 2),
+                'record_count': row[4]
+            })
+        
+        # Get profit analytics
+        cursor.execute('''
+            SELECT crop_name, AVG(net_profit) as avg_profit,
+                   AVG(profit_margin) as avg_margin, COUNT(*) as calc_count
+            FROM profit_calculations 
+            WHERE calculation_date >= date('now', '-30 days')
+            GROUP BY crop_name
+        ''')
+        
+        profit_analytics = []
+        for row in cursor.fetchall():
+            profit_analytics.append({
+                'crop_name': row[0],
+                'avg_profit': round(row[1], 2),
+                'avg_margin': round(row[2], 2),
+                'calc_count': row[3]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "price_trends": price_trends,
+                "profit_analytics": profit_analytics,
+                "insights": {
+                    "most_profitable_crop": max(profit_analytics, key=lambda x: x['avg_profit'])['crop_name'] if profit_analytics else None,
+                    "highest_price_crop": max(price_trends, key=lambda x: x['avg_price'])['crop_name'] if price_trends else None,
+                    "total_calculations": sum(p['calc_count'] for p in profit_analytics)
+                }
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+if __name__ == '__main__':
+    print("💰 Market Price Prediction API Starting...")
+    print(f"📊 Database: {DB_NAME}")
+    print(f"🌾 Available crops: {len(MARKET_PRICES)}")
+    print(f"💵 Production costs: {len(PRODUCTION_COSTS)} crops")
+    print("🚀 Server running on http://0.0.0.0:5004")
+    print("📱 Android emulator can access via http://10.0.2.2:5004")
+    app.run(debug=True, host='0.0.0.0', port=5004)

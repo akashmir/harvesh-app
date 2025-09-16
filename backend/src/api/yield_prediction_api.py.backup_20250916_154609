@@ -1,0 +1,637 @@
+"""
+Yield Prediction API
+Extends existing ML infrastructure to predict crop yields based on field conditions and historical data
+"""
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import json
+import sqlite3
+import numpy as np
+import pandas as pd
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
+import pickle
+import joblib
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import StandardScaler
+import math
+
+# Fix import paths for direct execution
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+
+app = Flask(__name__)
+CORS(app)
+
+# Database setup
+DB_NAME = 'yield_prediction.db'
+
+def init_database():
+    """Initialize the yield prediction database"""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    # Yield predictions table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS yield_predictions (
+            id TEXT PRIMARY KEY,
+            field_id TEXT NOT NULL,
+            crop_name TEXT NOT NULL,
+            predicted_yield REAL NOT NULL,
+            confidence_score REAL NOT NULL,
+            prediction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            soil_ph REAL,
+            soil_moisture REAL,
+            temperature REAL,
+            rainfall REAL,
+            area_hectares REAL,
+            season TEXT,
+            prediction_factors TEXT,
+            actual_yield REAL,
+            accuracy_score REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Historical yield data table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS historical_yields (
+            id TEXT PRIMARY KEY,
+            field_id TEXT NOT NULL,
+            crop_name TEXT NOT NULL,
+            actual_yield REAL NOT NULL,
+            area_hectares REAL NOT NULL,
+            yield_per_hectare REAL NOT NULL,
+            planting_date DATE NOT NULL,
+            harvesting_date DATE NOT NULL,
+            soil_ph REAL,
+            soil_moisture REAL,
+            avg_temperature REAL,
+            total_rainfall REAL,
+            season TEXT,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Weather data table (for predictions)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS weather_data (
+            id TEXT PRIMARY KEY,
+            field_id TEXT NOT NULL,
+            date DATE NOT NULL,
+            temperature REAL,
+            humidity REAL,
+            rainfall REAL,
+            wind_speed REAL,
+            pressure REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+# Initialize database
+init_database()
+
+# Load existing ML models
+try:
+    # Try to load existing models
+    with open('model.pkl', 'rb') as f:
+        existing_model = pickle.load(f)
+    
+    with open('minmaxscaler.pkl', 'rb') as f:
+        existing_scaler = pickle.load(f)
+    
+    print("✅ Loaded existing ML models")
+except FileNotFoundError:
+    print("⚠️ Existing models not found, will create new ones")
+    existing_model = None
+    existing_scaler = None
+
+# Yield prediction factors and weights
+YIELD_FACTORS = {
+    'soil_ph': {'weight': 0.15, 'optimal_range': (6.0, 7.5)},
+    'soil_moisture': {'weight': 0.20, 'optimal_range': (40, 80)},
+    'temperature': {'weight': 0.25, 'optimal_range': (20, 30)},
+    'rainfall': {'weight': 0.20, 'optimal_range': (500, 1500)},
+    'area_hectares': {'weight': 0.10, 'optimal_range': (0.5, 10)},
+    'season': {'weight': 0.10, 'optimal_values': ['Kharif', 'Rabi']}
+}
+
+# Crop-specific yield baselines (kg/hectare)
+CROP_YIELD_BASELINES = {
+    'Rice': {'min': 2000, 'max': 6000, 'avg': 4000},
+    'Wheat': {'min': 1500, 'max': 5000, 'avg': 3000},
+    'Maize': {'min': 2000, 'max': 8000, 'avg': 5000},
+    'Cotton': {'min': 800, 'max': 2000, 'avg': 1400},
+    'Sugarcane': {'min': 50000, 'max': 100000, 'avg': 75000},
+    'Groundnut': {'min': 1000, 'max': 3000, 'avg': 2000},
+    'Sunflower': {'min': 800, 'max': 2500, 'avg': 1500},
+    'Potato': {'min': 15000, 'max': 40000, 'avg': 25000},
+    'Tomato': {'min': 20000, 'max': 60000, 'avg': 35000},
+    'Onion': {'min': 15000, 'max': 35000, 'avg': 25000},
+    'Cabbage': {'min': 20000, 'max': 50000, 'avg': 35000},
+    'Cauliflower': {'min': 15000, 'max': 40000, 'avg': 25000},
+    'Brinjal': {'min': 15000, 'max': 35000, 'avg': 25000},
+    'Chilli': {'min': 8000, 'max': 20000, 'avg': 12000},
+    'Okra': {'min': 8000, 'max': 20000, 'avg': 12000},
+    'Cucumber': {'min': 15000, 'max': 35000, 'avg': 25000},
+    'Pumpkin': {'min': 10000, 'max': 25000, 'avg': 15000},
+    'Watermelon': {'min': 20000, 'max': 50000, 'avg': 35000},
+    'Mango': {'min': 5000, 'max': 15000, 'avg': 8000},
+    'Banana': {'min': 20000, 'max': 50000, 'avg': 35000},
+    'Papaya': {'min': 30000, 'max': 80000, 'avg': 50000},
+    'Coconut': {'min': 5000, 'max': 15000, 'avg': 8000},
+    'Apple': {'min': 10000, 'max': 30000, 'avg': 20000},
+    'Grapes': {'min': 15000, 'max': 40000, 'avg': 25000}
+}
+
+def calculate_optimality_score(factor_value, factor_config):
+    """Calculate how optimal a factor value is (0-1 scale)"""
+    if 'optimal_range' in factor_config:
+        min_val, max_val = factor_config['optimal_range']
+        if min_val <= factor_value <= max_val:
+            return 1.0
+        else:
+            # Calculate distance from optimal range
+            if factor_value < min_val:
+                distance = min_val - factor_value
+                range_size = max_val - min_val
+            else:
+                distance = factor_value - max_val
+                range_size = max_val - min_val
+            
+            # Return score based on distance (closer = higher score)
+            return max(0.0, 1.0 - (distance / range_size))
+    
+    elif 'optimal_values' in factor_config:
+        return 1.0 if factor_value in factor_config['optimal_values'] else 0.5
+    
+    return 0.5  # Default neutral score
+
+def predict_yield(crop_name: str, field_conditions: Dict, area_hectares: float) -> Dict:
+    """Predict crop yield based on field conditions"""
+    
+    # Get crop baseline
+    if crop_name not in CROP_YIELD_BASELINES:
+        crop_name = 'Rice'  # Default fallback
+    
+    baseline = CROP_YIELD_BASELINES[crop_name]
+    
+    # Calculate factor scores
+    factor_scores = {}
+    total_weight = 0
+    weighted_score = 0
+    
+    for factor, config in YIELD_FACTORS.items():
+        if factor in field_conditions:
+            value = field_conditions[factor]
+            score = calculate_optimality_score(value, config)
+            factor_scores[factor] = score
+            weighted_score += score * config['weight']
+            total_weight += config['weight']
+    
+    # Normalize weighted score
+    if total_weight > 0:
+        normalized_score = weighted_score / total_weight
+    else:
+        normalized_score = 0.5
+    
+    # Calculate predicted yield
+    # Use baseline average as starting point, adjust based on conditions
+    base_yield = baseline['avg']
+    min_yield = baseline['min']
+    max_yield = baseline['max']
+    
+    # Scale the yield based on normalized score
+    yield_range = max_yield - min_yield
+    predicted_yield = min_yield + (yield_range * normalized_score)
+    
+    # Apply area scaling
+    total_predicted_yield = predicted_yield * area_hectares
+    
+    # Calculate confidence score
+    confidence_score = min(0.95, max(0.60, normalized_score))
+    
+    # Generate prediction factors explanation
+    prediction_factors = {
+        'factor_scores': factor_scores,
+        'weighted_score': normalized_score,
+        'baseline_yield': base_yield,
+        'yield_per_hectare': predicted_yield,
+        'total_yield': total_predicted_yield
+    }
+    
+    return {
+        'predicted_yield': round(total_predicted_yield, 2),
+        'yield_per_hectare': round(predicted_yield, 2),
+        'confidence_score': round(confidence_score, 3),
+        'prediction_factors': prediction_factors,
+        'baseline_info': baseline
+    }
+
+def get_historical_yield_data(field_id: str = None, crop_name: str = None) -> List[Dict]:
+    """Get historical yield data for analysis"""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    query = 'SELECT * FROM historical_yields WHERE 1=1'
+    params = []
+    
+    if field_id:
+        query += ' AND field_id = ?'
+        params.append(field_id)
+    
+    if crop_name:
+        query += ' AND crop_name = ?'
+        params.append(crop_name)
+    
+    query += ' ORDER BY created_at DESC'
+    
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    
+    historical_data = []
+    for row in rows:
+        historical_data.append({
+            'id': row[0],
+            'field_id': row[1],
+            'crop_name': row[2],
+            'actual_yield': row[3],
+            'area_hectares': row[4],
+            'yield_per_hectare': row[5],
+            'planting_date': row[6],
+            'harvesting_date': row[7],
+            'soil_ph': row[8],
+            'soil_moisture': row[9],
+            'avg_temperature': row[10],
+            'total_rainfall': row[11],
+            'season': row[12],
+            'notes': row[13],
+            'created_at': row[14]
+        })
+    
+    conn.close()
+    return historical_data
+
+def add_historical_yield_data(data: Dict) -> str:
+    """Add historical yield data for model training"""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    yield_id = f"yield_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(str(data)) % 10000}"
+    
+    cursor.execute('''
+        INSERT INTO historical_yields 
+        (id, field_id, crop_name, actual_yield, area_hectares, yield_per_hectare,
+         planting_date, harvesting_date, soil_ph, soil_moisture, avg_temperature,
+         total_rainfall, season, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        yield_id,
+        data['field_id'],
+        data['crop_name'],
+        data['actual_yield'],
+        data['area_hectares'],
+        data['yield_per_hectare'],
+        data['planting_date'],
+        data['harvesting_date'],
+        data.get('soil_ph'),
+        data.get('soil_moisture'),
+        data.get('avg_temperature'),
+        data.get('total_rainfall'),
+        data.get('season'),
+        data.get('notes', '')
+    ))
+    
+    conn.commit()
+    conn.close()
+    return yield_id
+
+# API Endpoints
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        "success": True,
+        "message": "Yield Prediction API is running",
+        "timestamp": datetime.now().isoformat(),
+        "available_crops": len(CROP_YIELD_BASELINES)
+    })
+
+@app.route('/predict', methods=['POST'])
+def predict_crop_yield():
+    """Predict crop yield based on field conditions"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['crop_name', 'area_hectares']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    "success": False,
+                    "error": f"Missing required field: {field}"
+                }), 400
+        
+        # Get field conditions
+        field_conditions = {
+            'soil_ph': data.get('soil_ph', 6.5),
+            'soil_moisture': data.get('soil_moisture', 50.0),
+            'temperature': data.get('temperature', 25.0),
+            'rainfall': data.get('rainfall', 1000.0),
+            'area_hectares': data['area_hectares'],
+            'season': data.get('season', 'Kharif')
+        }
+        
+        # Make prediction
+        prediction = predict_yield(
+            data['crop_name'],
+            field_conditions,
+            data['area_hectares']
+        )
+        
+        # Store prediction in database
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        
+        prediction_id = f"pred_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hash(str(data)) % 10000}"
+        
+        cursor.execute('''
+            INSERT INTO yield_predictions 
+            (id, field_id, crop_name, predicted_yield, confidence_score,
+             soil_ph, soil_moisture, temperature, rainfall, area_hectares,
+             season, prediction_factors)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            prediction_id,
+            data.get('field_id', 'default_field'),
+            data['crop_name'],
+            prediction['predicted_yield'],
+            prediction['confidence_score'],
+            field_conditions['soil_ph'],
+            field_conditions['soil_moisture'],
+            field_conditions['temperature'],
+            field_conditions['rainfall'],
+            data['area_hectares'],
+            field_conditions['season'],
+            json.dumps(prediction['prediction_factors'])
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "prediction_id": prediction_id,
+                "crop_name": data['crop_name'],
+                "area_hectares": data['area_hectares'],
+                "predicted_yield": prediction['predicted_yield'],
+                "yield_per_hectare": prediction['yield_per_hectare'],
+                "confidence_score": prediction['confidence_score'],
+                "prediction_factors": prediction['prediction_factors'],
+                "baseline_info": prediction['baseline_info'],
+                "field_conditions": field_conditions
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/crops', methods=['GET'])
+def get_available_crops():
+    """Get list of crops with yield baselines"""
+    return jsonify({
+        "success": True,
+        "data": {
+            "crops": CROP_YIELD_BASELINES,
+            "total_crops": len(CROP_YIELD_BASELINES)
+        }
+    })
+
+@app.route('/historical', methods=['GET'])
+def get_historical_data():
+    """Get historical yield data"""
+    try:
+        field_id = request.args.get('field_id')
+        crop_name = request.args.get('crop_name')
+        
+        historical_data = get_historical_yield_data(field_id, crop_name)
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "historical_yields": historical_data,
+                "total_records": len(historical_data)
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/historical', methods=['POST'])
+def add_historical_data():
+    """Add historical yield data"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['field_id', 'crop_name', 'actual_yield', 'area_hectares', 
+                          'planting_date', 'harvesting_date']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    "success": False,
+                    "error": f"Missing required field: {field}"
+                }), 400
+        
+        # Calculate yield per hectare
+        yield_per_hectare = data['actual_yield'] / data['area_hectares']
+        data['yield_per_hectare'] = yield_per_hectare
+        
+        # Add to database
+        yield_id = add_historical_yield_data(data)
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "yield_id": yield_id,
+                "yield_per_hectare": yield_per_hectare,
+                "message": "Historical data added successfully"
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/analytics', methods=['GET'])
+def get_yield_analytics():
+    """Get yield analytics and performance metrics"""
+    try:
+        field_id = request.args.get('field_id')
+        crop_name = request.args.get('crop_name')
+        
+        # Get historical data
+        historical_data = get_historical_yield_data(field_id, crop_name)
+        
+        if not historical_data:
+            return jsonify({
+                "success": True,
+                "data": {
+                    "message": "No historical data available",
+                    "analytics": {}
+                }
+            })
+        
+        # Calculate analytics
+        yields = [record['yield_per_hectare'] for record in historical_data]
+        areas = [record['area_hectares'] for record in historical_data]
+        total_yields = [record['actual_yield'] for record in historical_data]
+        
+        analytics = {
+            'total_records': len(historical_data),
+            'average_yield_per_hectare': round(np.mean(yields), 2),
+            'max_yield_per_hectare': round(np.max(yields), 2),
+            'min_yield_per_hectare': round(np.min(yields), 2),
+            'yield_std_deviation': round(np.std(yields), 2),
+            'total_area_hectares': round(sum(areas), 2),
+            'total_production_kg': round(sum(total_yields), 2),
+            'average_area_per_field': round(np.mean(areas), 2),
+            'crop_distribution': {},
+            'seasonal_performance': {},
+            'yield_trend': 'stable'  # Could be calculated based on time series
+        }
+        
+        # Crop distribution
+        crop_counts = {}
+        for record in historical_data:
+            crop = record['crop_name']
+            crop_counts[crop] = crop_counts.get(crop, 0) + 1
+        analytics['crop_distribution'] = crop_counts
+        
+        # Seasonal performance
+        season_yields = {}
+        for record in historical_data:
+            season = record['season']
+            if season not in season_yields:
+                season_yields[season] = []
+            season_yields[season].append(record['yield_per_hectare'])
+        
+        for season, yields in season_yields.items():
+            analytics['seasonal_performance'][season] = {
+                'average_yield': round(np.mean(yields), 2),
+                'record_count': len(yields)
+            }
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "analytics": analytics,
+                "historical_data": historical_data[:10]  # Last 10 records
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/predictions', methods=['GET'])
+def get_predictions():
+    """Get yield predictions history"""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        
+        field_id = request.args.get('field_id')
+        crop_name = request.args.get('crop_name')
+        
+        query = 'SELECT * FROM yield_predictions WHERE 1=1'
+        params = []
+        
+        if field_id:
+            query += ' AND field_id = ?'
+            params.append(field_id)
+        
+        if crop_name:
+            query += ' AND crop_name = ?'
+            params.append(crop_name)
+        
+        query += ' ORDER BY created_at DESC LIMIT 50'
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        predictions = []
+        for row in rows:
+            predictions.append({
+                'id': row[0],
+                'field_id': row[1],
+                'crop_name': row[2],
+                'predicted_yield': row[3],
+                'confidence_score': row[4],
+                'prediction_date': row[5],
+                'soil_ph': row[6],
+                'soil_moisture': row[7],
+                'temperature': row[8],
+                'rainfall': row[9],
+                'area_hectares': row[10],
+                'season': row[11],
+                'prediction_factors': json.loads(row[12]) if row[12] else {},
+                'actual_yield': row[13],
+                'accuracy_score': row[14],
+                'created_at': row[15]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "data": {
+                "predictions": predictions,
+                "total_predictions": len(predictions)
+            }
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/factors', methods=['GET'])
+def get_yield_factors():
+    """Get yield prediction factors and their importance"""
+    return jsonify({
+        "success": True,
+        "data": {
+            "yield_factors": YIELD_FACTORS,
+            "crop_baselines": CROP_YIELD_BASELINES
+        }
+    })
+
+if __name__ == '__main__':
+    print("🌾 Yield Prediction API Starting...")
+    print(f"📊 Database: {DB_NAME}")
+    print(f"🌱 Available crops: {len(CROP_YIELD_BASELINES)}")
+    print(f"🔬 ML Models: {'Loaded' if existing_model else 'Will create new'}")
+    print("🚀 Server running on http://0.0.0.0:5003")
+    print("📱 Android emulator can access via http://10.0.2.2:5003")
+    app.run(debug=True, host='0.0.0.0', port=5003)

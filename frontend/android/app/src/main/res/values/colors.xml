@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launch screen background color - matches your app theme -->
+    <color name="launch_background_color">#2E7D32</color>
+    
+    <!-- Primary app colors -->
+    <color name="primary_color">#2E7D32</color>
+    <color name="primary_dark">#1B5E20</color>
+    <color name="accent_color">#4CAF50</color>
+</resources>
