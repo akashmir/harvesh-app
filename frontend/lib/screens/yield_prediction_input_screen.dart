@@ -230,6 +230,8 @@ class _YieldPredictionInputScreenState extends State<YieldPredictionInputScreen>
                 if (_predictionResult != null) ...[
                   const SizedBox(height: 24),
                   _buildPredictionResult(),
+                  const SizedBox(height: 16),
+                  _buildAdvisoryHint(),
                 ],
                 const SizedBox(height: 32),
               ],
@@ -719,6 +721,22 @@ class _YieldPredictionInputScreenState extends State<YieldPredictionInputScreen>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildAdvisoryHint() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue[200]!),
+      ),
+      child: const Text(
+        'Tip: For actionable irrigation, fertilization, and pest control plans, check the AI Yield & Advisory in Additional Features.',
+        style: TextStyle(fontSize: 12),
+      ),
     );
   }
 }

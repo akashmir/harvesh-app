@@ -1,0 +1,33 @@
+# Production Market Price API Requirements
+# Minimal dependencies for production deployment
+
+# Core Flask dependencies
+Flask==2.3.3
+Flask-CORS==4.0.0
+Werkzeug==2.3.7
+
+# Production server
+gunicorn==21.2.0
+
+# Database (SQLite is built-in, but we include for completeness)
+# No additional database dependencies needed for SQLite
+
+# HTTP requests (if needed for future Agmarknet integration)
+requests==2.31.0
+
+# Environment and configuration
+python-dotenv==1.0.0
+
+# Logging and monitoring
+structlog==23.1.0
+
+# Security
+cryptography==41.0.3
+
+# Additional utilities
+python-dateutil==2.8.2
+pytz==2023.3
+click==8.1.7
+itsdangerous==2.1.2
+Jinja2==3.1.2
+MarkupSafe==2.1.3

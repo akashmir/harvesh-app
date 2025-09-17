@@ -1,0 +1,58 @@
+# Google Cloud Build configuration for Market Price API
+steps:
+  # Build Market Price API image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build', 
+      '-t', 'gcr.io/$PROJECT_ID/market-price-api:$COMMIT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/market-price-api:latest',
+      '-f', 'backend/Dockerfile.market-price',
+      './backend'
+    ]
+    dir: '.'
+
+  # Push Market Price API image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/market-price-api:$COMMIT_SHA']
+
+  # Push latest tag
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/market-price-api:latest']
+
+  # Deploy to Cloud Run - Market Price API
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args: [
+      'run', 'deploy', 'market-price-api',
+      '--image', 'gcr.io/$PROJECT_ID/market-price-api:$COMMIT_SHA',
+      '--region', 'us-central1',
+      '--platform', 'managed',
+      '--allow-unauthenticated',
+      '--port', '5004',
+      '--memory', '2Gi',
+      '--cpu', '2',
+      '--max-instances', '10',
+      '--min-instances', '0',
+      '--concurrency', '100',
+      '--timeout', '300',
+      '--set-env-vars', 'FLASK_ENV=production,HOST=0.0.0.0,PORT=5004,DEBUG=false,API_VERSION=1.0.0'
+    ]
+
+# Build options
+options:
+  machineType: 'E2_HIGHCPU_4'
+  diskSizeGb: 50
+  logging: CLOUD_LOGGING_ONLY
+
+# Build timeout
+timeout: '600s'
+
+# Substitution variables
+substitutions:
+  _REGION: 'us-central1'
+  _SERVICE_ACCOUNT: 'market-price-sa@$PROJECT_ID.iam.gserviceaccount.com'
+
+# Build triggers
+images:
+  - 'gcr.io/$PROJECT_ID/market-price-api:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/market-price-api:latest'

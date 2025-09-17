@@ -13,6 +13,7 @@ import 'market_price_screen.dart';
 import 'weather_integration_screen.dart';
 import '../services/weather_service.dart';
 import '../services/location_service.dart';
+import 'ai_yield_advisory_screen.dart';
 
 class EnhancedHomeScreen extends StatefulWidget {
   const EnhancedHomeScreen({super.key});
@@ -130,7 +131,7 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
               children: [
                 _buildRealTimeWeatherCard(),
                 const SizedBox(height: 24),
-                _buildUltraRecommenderHero(),
+                //_buildUltraRecommenderHero(),
                 const SizedBox(height: 24),
                 _buildMainFeaturesGrid(),
                 const SizedBox(height: 24),
@@ -198,181 +199,181 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
     );
   }
 
-  Widget _buildUltraRecommenderHero() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF1B5E20),
-            Color(0xFF2E7D32),
-            Color(0xFF388E3C),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF1B5E20).withOpacity(0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.psychology,
-                  color: Colors.white,
-                  size: 32,
-                ),
-              ),
-              const SizedBox(width: 16),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '🚀 ULTRA CROP RECOMMENDER',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'NEW FEATURE',
-                      style: TextStyle(
-                        color: Colors.amber,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          const Text(
-            'Advanced AI-powered crop recommendations using:',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Features List
-          const Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    FeatureItem(icon: '🛰️', text: 'Satellite Soil Analysis'),
-                    FeatureItem(icon: '🌦️', text: 'Weather Patterns'),
-                    FeatureItem(icon: '🤖', text: 'ML Ensemble Models'),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    FeatureItem(icon: '📊', text: 'Market Analysis'),
-                    FeatureItem(icon: '💰', text: 'Profit Calculations'),
-                    FeatureItem(icon: '🌱', text: 'Sustainability Score'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 20),
-
-          // CTA Button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const UltraCropRecommenderScreen(),
-                ),
-              ),
-              icon: const Icon(Icons.rocket_launch, color: Color(0xFF1B5E20)),
-              label: const Text(
-                'TRY ULTRA RECOMMENDER',
-                style: TextStyle(
-                  color: Color(0xFF1B5E20),
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 0,
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Confidence Badge
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.verified, color: Colors.amber, size: 16),
-                    SizedBox(width: 4),
-                    Text(
-                      'AI-Powered • 95% Accuracy',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  // Widget _buildUltraRecommenderHero() {
+  //   return Container(
+  //     padding: const EdgeInsets.all(24),
+  //     decoration: BoxDecoration(
+  //       gradient: const LinearGradient(
+  //         begin: Alignment.topLeft,
+  //         end: Alignment.bottomRight,
+  //         colors: [
+  //           Color(0xFF1B5E20),
+  //           Color(0xFF2E7D32),
+  //           Color(0xFF388E3C),
+  //         ],
+  //       ),
+  //       borderRadius: BorderRadius.circular(20),
+  //       boxShadow: [
+  //         BoxShadow(
+  //           color: const Color(0xFF1B5E20).withOpacity(0.3),
+  //           blurRadius: 15,
+  //           offset: const Offset(0, 8),
+  //         ),
+  //       ],
+  //     ),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       children: [
+  //         Row(
+  //           children: [
+  //             Container(
+  //               padding: const EdgeInsets.all(12),
+  //               decoration: BoxDecoration(
+  //                 color: Colors.white.withOpacity(0.2),
+  //                 borderRadius: BorderRadius.circular(12),
+  //               ),
+  //               child: const Icon(
+  //                 Icons.psychology,
+  //                 color: Colors.white,
+  //                 size: 32,
+  //               ),
+  //             ),
+  //             const SizedBox(width: 16),
+  //             const Expanded(
+  //               child: Column(
+  //                 crossAxisAlignment: CrossAxisAlignment.start,
+  //                 children: [
+  //                   Text(
+  //                     '🚀 ULTRA CROP RECOMMENDER',
+  //                     style: TextStyle(
+  //                       color: Colors.white,
+  //                       fontSize: 20,
+  //                       fontWeight: FontWeight.bold,
+  //                       letterSpacing: 0.5,
+  //                     ),
+  //                   ),
+  //                   SizedBox(height: 4),
+  //                   Text(
+  //                     'NEW FEATURE',
+  //                     style: TextStyle(
+  //                       color: Colors.amber,
+  //                       fontSize: 12,
+  //                       fontWeight: FontWeight.bold,
+  //                       letterSpacing: 1.0,
+  //                     ),
+  //                   ),
+  //                 ],
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //         const SizedBox(height: 20),
+  //
+  //         const Text(
+  //           'Advanced AI-powered crop recommendations using:',
+  //           style: TextStyle(
+  //             color: Colors.white,
+  //             fontSize: 16,
+  //             fontWeight: FontWeight.w500,
+  //           ),
+  //         ),
+  //         const SizedBox(height: 12),
+  //
+  //         // Features List
+  //         const Row(
+  //           children: [
+  //             Expanded(
+  //               child: Column(
+  //                 crossAxisAlignment: CrossAxisAlignment.start,
+  //                 children: [
+  //                   FeatureItem(icon: '🛰️', text: 'Satellite Soil Analysis'),
+  //                   FeatureItem(icon: '🌦️', text: 'Weather Patterns'),
+  //                   FeatureItem(icon: '🤖', text: 'ML Ensemble Models'),
+  //                 ],
+  //               ),
+  //             ),
+  //             Expanded(
+  //               child: Column(
+  //                 crossAxisAlignment: CrossAxisAlignment.start,
+  //                 children: [
+  //                   FeatureItem(icon: '📊', text: 'Market Analysis'),
+  //                   FeatureItem(icon: '💰', text: 'Profit Calculations'),
+  //                   FeatureItem(icon: '🌱', text: 'Sustainability Score'),
+  //                 ],
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //
+  //         const SizedBox(height: 20),
+  //
+  //         // CTA Button
+  //         SizedBox(
+  //           width: double.infinity,
+  //           child: ElevatedButton.icon(
+  //             onPressed: () => Navigator.push(
+  //               context,
+  //               MaterialPageRoute(
+  //                 builder: (context) => const UltraCropRecommenderScreen(),
+  //               ),
+  //             ),
+  //             icon: const Icon(Icons.rocket_launch, color: Color(0xFF1B5E20)),
+  //             label: const Text(
+  //               'TRY ULTRA RECOMMENDER',
+  //               style: TextStyle(
+  //                 color: Color(0xFF1B5E20),
+  //                 fontWeight: FontWeight.bold,
+  //                 letterSpacing: 0.5,
+  //               ),
+  //             ),
+  //             style: ElevatedButton.styleFrom(
+  //               backgroundColor: Colors.white,
+  //               padding: const EdgeInsets.symmetric(vertical: 16),
+  //               shape: RoundedRectangleBorder(
+  //                 borderRadius: BorderRadius.circular(12),
+  //               ),
+  //               elevation: 0,
+  //             ),
+  //           ),
+  //         ),
+  //
+  //         const SizedBox(height: 12),
+  //
+  //         // Confidence Badge
+  //         Row(
+  //           mainAxisAlignment: MainAxisAlignment.center,
+  //           children: [
+  //             Container(
+  //               padding: const EdgeInsets.symmetric(
+  //                 horizontal: 12,
+  //                 vertical: 6,
+  //               ),
+  //               decoration: BoxDecoration(
+  //                 color: Colors.white.withOpacity(0.2),
+  //                 borderRadius: BorderRadius.circular(20),
+  //               ),
+  //               child: const Row(
+  //                 mainAxisSize: MainAxisSize.min,
+  //                 children: [
+  //                   Icon(Icons.verified, color: Colors.amber, size: 16),
+  //                   SizedBox(width: 4),
+  //                   Text(
+  //                     'AI-Powered • 95% Accuracy',
+  //                     style: TextStyle(
+  //                       color: Colors.white,
+  //                       fontSize: 12,
+  //                       fontWeight: FontWeight.w500,
+  //                     ),
+  //                   ),
+  //                 ],
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   Widget _buildRealTimeWeatherCard() {
     return Container(
@@ -628,14 +629,14 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
               ),
             ),
             _buildMainFeatureCard(
-              title: 'Yield Calculator',
-              subtitle: 'Know how much you can harvest',
-              icon: Icons.analytics,
-              color: const Color(0xFF1D79C5),
+              title: '🤖 AI Yield & Advisory',
+              subtitle: 'Predict yield + irrigation, fertilizer, pest plan',
+              icon: Icons.psychology,
+              color: const Color(0xFF3F51B5),
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (context) => const YieldPredictionScreen()),
+                    builder: (context) => const AiYieldAdvisoryScreen()),
               ),
             ),
           ],
@@ -738,6 +739,17 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
         ),
         const SizedBox(height: 16),
         _buildAdditionalFeatureCard(
+          title: '💰 Market Prices',
+          subtitle: 'Location-based mandi prices from Agmarknet',
+          icon: Icons.trending_up,
+          color: const Color(0xFF2196F3),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const MarketPriceScreen()),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildAdditionalFeatureCard(
           title: 'Crop Doctor',
           subtitle: 'Take a photo to check plant health',
           icon: Icons.camera_alt,
@@ -746,6 +758,18 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
             context,
             MaterialPageRoute(
                 builder: (context) => const EnhancedPestDetectionScreen()),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildAdditionalFeatureCard(
+          title: '📊 Yield Calculator',
+          subtitle: 'Know how much you can harvest',
+          icon: Icons.analytics,
+          color: const Color(0xFF8BC34A),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const YieldPredictionScreen()),
           ),
         ),
         const SizedBox(height: 12),
@@ -800,17 +824,6 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
           icon: Icons.smart_toy,
           color: const Color(0xFF9C27B0),
           onTap: () => Navigator.pushNamed(context, '/sih_2025_dashboard'),
-        ),
-        const SizedBox(height: 12),
-        _buildAdditionalFeatureCard(
-          title: '💰 Market Prices',
-          subtitle: 'Check crop prices and calculate profit',
-          icon: Icons.trending_up,
-          color: const Color(0xFF2196F3),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const MarketPriceScreen()),
-          ),
         ),
         const SizedBox(height: 12),
         _buildAdditionalFeatureCard(

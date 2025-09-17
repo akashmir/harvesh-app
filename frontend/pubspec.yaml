@@ -54,6 +54,11 @@ dependencies:
   # Offline support and connectivity
   connectivity_plus: ^5.0.2
   shared_preferences: ^2.2.2
+  
+  # Voice Assistant dependencies (temporarily disabled for build)
+  # speech_to_text: ^6.6.0
+  # flutter_tts: ^3.8.5
+  # audio_waveforms: ^1.0.5
 
 dev_dependencies:
   flutter_test:

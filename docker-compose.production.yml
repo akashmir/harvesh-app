@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  market-price-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+    ports:
+      - "5004:5004"
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=production_market_price.db
+      - HOST=0.0.0.0
+      - PORT=5004
+      - DEBUG=false
+    volumes:
+      - ./backend/data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - harvest-network
+
+networks:
+  harvest-network:
+    driver: bridge

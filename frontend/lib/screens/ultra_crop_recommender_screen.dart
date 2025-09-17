@@ -25,7 +25,7 @@ class _UltraCropRecommenderScreenState extends State<UltraCropRecommenderScreen>
   late Animation<Offset> _slideAnimation;
 
   // Form Controllers
-  final _formKey = GlobalKey<FormState>();
+  final _farmDetailsFormKey = GlobalKey<FormState>();
   final _farmSizeController = TextEditingController();
   String _farmSizeUnit = 'hectares';
 
@@ -41,6 +41,7 @@ class _UltraCropRecommenderScreenState extends State<UltraCropRecommenderScreen>
   String _selectedCropType = 'all';
   String _selectedLanguage = 'en';
   List<String> _preferredCrops = [];
+  bool _showFarmSizeError = false;
 
   // Optional Soil Test Data
   bool _hasSoilTestData = false;
@@ -73,6 +74,16 @@ class _UltraCropRecommenderScreenState extends State<UltraCropRecommenderScreen>
     _initializeAnimations();
     _getCurrentLocation();
     _checkOfflineCapability();
+    // _checkApiHealth(); // Removed as API is now working
+
+    // Add listener to farm size controller to clear error when user types
+    _farmSizeController.addListener(() {
+      if (_showFarmSizeError && _farmSizeController.text.isNotEmpty) {
+        setState(() {
+          _showFarmSizeError = false;
+        });
+      }
+    });
   }
 
   void _initializeAnimations() {
@@ -181,6 +192,8 @@ class _UltraCropRecommenderScreenState extends State<UltraCropRecommenderScreen>
     }
   }
 
+  // Removed _checkApiHealth method as API is now working
+
   Future<void> _downloadOfflineData() async {
     setState(() {
       _isDownloadingOfflineData = true;
@@ -271,7 +284,8 @@ class _UltraCropRecommenderScreenState extends State<UltraCropRecommenderScreen>
   }
 
   Future<void> _getUltraRecommendation() async {
-    if (!_formKey.currentState!.validate()) {
+    // Validate farm details form if on step 1
+    if (_currentStep == 1 && !_farmDetailsFormKey.currentState!.validate()) {
       return;
     }
 
@@ -327,6 +341,8 @@ class _UltraCropRecommenderScreenState extends State<UltraCropRecommenderScreen>
         return;
       } else {
         // Use online recommendation
+        print(
+            'UltraCropRecommenderScreen: Making online recommendation request');
         response = await UltraCropService.getUltraRecommendation(
           latitude: _selectedLocation.latitude,
           longitude: _selectedLocation.longitude,
@@ -337,9 +353,11 @@ class _UltraCropRecommenderScreenState extends State<UltraCropRecommenderScreen>
           soilData: soilData,
           language: _selectedLanguage,
         );
+        print('UltraCropRecommenderScreen: Received response: $response');
       }
 
       if (response['success'] == true) {
+        print('UltraCropRecommenderScreen: Success! Navigating to results');
         setState(() {
           // Pass the full API response through so results screen can access
           // success, data, and error fields consistently.
@@ -350,6 +368,8 @@ class _UltraCropRecommenderScreenState extends State<UltraCropRecommenderScreen>
         // Navigate to results
         _showResults();
       } else {
+        print(
+            'UltraCropRecommenderScreen: Error in response: ${response['error']}');
         setState(() {
           _error = response['error'] ?? 'Unknown error occurred';
           _isLoading = false;
@@ -475,22 +495,23 @@ class _UltraCropRecommenderScreenState extends State<UltraCropRecommenderScreen>
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Offline Status Card
-                  if (_isOfflineMode || !_isOfflineAvailable)
-                    _buildOfflineStatusCard(),
-                  if (_isOfflineMode || !_isOfflineAvailable)
-                    const SizedBox(height: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Offline Status Card
+                if (_isOfflineMode || !_isOfflineAvailable)
+                  _buildOfflineStatusCard(),
+                if (_isOfflineMode || !_isOfflineAvailable)
+                  const SizedBox(height: 16),
 
-                  _buildStepContent(),
-                  const SizedBox(height: 24),
-                  _buildActionButtons(),
-                ],
-              ),
+                // Error Display - Removed as API is now working
+                // if (_error != null) _buildErrorCard(),
+                // if (_error != null) const SizedBox(height: 16),
+
+                _buildStepContent(),
+                const SizedBox(height: 24),
+                _buildActionButtons(),
+              ],
             ),
           ),
         ),
@@ -641,12 +662,17 @@ class _UltraCropRecommenderScreenState extends State<UltraCropRecommenderScreen>
     );
   }
 
+  // Removed _buildErrorCard method as API is now working
+
   Widget _buildStepContent() {
     switch (_currentStep) {
       case 0:
         return _buildLocationStep();
       case 1:
-        return _buildFarmDetailsStep();
+        return Form(
+          key: _farmDetailsFormKey,
+          child: _buildFarmDetailsStep(),
+        );
       case 2:
         return _buildSoilTestStep();
       case 3:
@@ -861,6 +887,10 @@ class _UltraCropRecommenderScreenState extends State<UltraCropRecommenderScreen>
             decoration: InputDecoration(
               labelText: 'Farm Size',
               hintText: 'Enter your farm size',
+              prefixIcon: Icon(Icons.square_foot,
+                  color: _showFarmSizeError
+                      ? Colors.red.shade600
+                      : Colors.grey.shade600),
               suffixIcon: Container(
                 width: 100,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -894,16 +924,52 @@ class _UltraCropRecommenderScreenState extends State<UltraCropRecommenderScreen>
                   ),
                 ),
               ),
-              border: const OutlineInputBorder(),
+              border: OutlineInputBorder(
+                borderSide: BorderSide(
+                  color: _showFarmSizeError
+                      ? Colors.red.shade300
+                      : Colors.grey.shade300,
+                  width: _showFarmSizeError ? 2 : 1,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(
+                  color: _showFarmSizeError
+                      ? Colors.red.shade500
+                      : Colors.blue.shade500,
+                  width: 2,
+                ),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderSide: BorderSide(
+                  color: Colors.red.shade500,
+                  width: 2,
+                ),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderSide: BorderSide(
+                  color: Colors.red.shade700,
+                  width: 2,
+                ),
+              ),
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
-                return 'Please enter farm size';
+                setState(() {
+                  _showFarmSizeError = true;
+                });
+                return 'This field is empty, please fill this';
               }
               final size = double.tryParse(value);
               if (size == null || size <= 0) {
+                setState(() {
+                  _showFarmSizeError = true;
+                });
                 return 'Please enter a valid farm size';
               }
+              setState(() {
+                _showFarmSizeError = false;
+              });
               return null;
             },
           ),
@@ -1376,6 +1442,11 @@ class _UltraCropRecommenderScreenState extends State<UltraCropRecommenderScreen>
   }
 
   Widget _buildActionButtons() {
+    // Only show action buttons for steps 0-2, not for step 3 (preferences)
+    if (_currentStep >= 3) {
+      return const SizedBox.shrink();
+    }
+
     return Row(
       children: [
         if (_currentStep > 0)
@@ -1396,16 +1467,22 @@ class _UltraCropRecommenderScreenState extends State<UltraCropRecommenderScreen>
         if (_currentStep > 0) const SizedBox(width: 16),
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: _currentStep < 3
-                ? () {
-                    setState(() {
-                      _currentStep++;
-                    });
-                  }
-                : _getUltraRecommendation,
-            icon:
-                Icon(_currentStep < 3 ? Icons.arrow_forward : Icons.psychology),
-            label: Text(_currentStep < 3 ? 'Next' : 'Analyze'),
+            onPressed: () {
+              // Validate form only on farm details step (step 1)
+              if (_currentStep == 1) {
+                if (_farmDetailsFormKey.currentState!.validate()) {
+                  setState(() {
+                    _currentStep++;
+                  });
+                }
+              } else {
+                setState(() {
+                  _currentStep++;
+                });
+              }
+            },
+            icon: const Icon(Icons.arrow_forward),
+            label: const Text('Next'),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF1B5E20),
               foregroundColor: Colors.white,

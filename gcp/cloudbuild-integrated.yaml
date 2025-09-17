@@ -1,0 +1,119 @@
+# Google Cloud Build configuration for Integrated Deployment
+# This builds and deploys both the main app and the new Market Price API
+steps:
+  # Build Ultra Crop Recommender API image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build', 
+      '-t', 'gcr.io/$PROJECT_ID/ultra-crop-api:$COMMIT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/ultra-crop-api:latest',
+      './backend'
+    ]
+    dir: '.'
+
+  # Build Market Price API image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build', 
+      '-t', 'gcr.io/$PROJECT_ID/market-price-api:$COMMIT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/market-price-api:latest',
+      '-f', 'backend/Dockerfile.market-price',
+      './backend'
+    ]
+    dir: '.'
+
+  # Build frontend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-t', 'gcr.io/$PROJECT_ID/ultra-crop-frontend:$COMMIT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/ultra-crop-frontend:latest',
+      './frontend'
+    ]
+    dir: '.'
+
+  # Push Ultra Crop API image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/ultra-crop-api:$COMMIT_SHA']
+
+  # Push Market Price API image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/market-price-api:$COMMIT_SHA']
+
+  # Push frontend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/ultra-crop-frontend:$COMMIT_SHA']
+
+  # Deploy Ultra Crop API to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args: [
+      'run', 'deploy', 'ultra-crop-api',
+      '--image', 'gcr.io/$PROJECT_ID/ultra-crop-api:$COMMIT_SHA',
+      '--region', 'us-central1',
+      '--platform', 'managed',
+      '--allow-unauthenticated',
+      '--port', '5020',
+      '--memory', '4Gi',
+      '--cpu', '4',
+      '--max-instances', '20',
+      '--set-env-vars', 'ENVIRONMENT=production,API_HOST=0.0.0.0,API_PORT=5020'
+    ]
+
+  # Deploy Market Price API to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args: [
+      'run', 'deploy', 'market-price-api',
+      '--image', 'gcr.io/$PROJECT_ID/market-price-api:$COMMIT_SHA',
+      '--region', 'us-central1',
+      '--platform', 'managed',
+      '--allow-unauthenticated',
+      '--port', '5004',
+      '--memory', '2Gi',
+      '--cpu', '2',
+      '--max-instances', '10',
+      '--min-instances', '0',
+      '--concurrency', '100',
+      '--timeout', '300',
+      '--set-env-vars', 'FLASK_ENV=production,HOST=0.0.0.0,PORT=5004,DEBUG=false,API_VERSION=1.0.0'
+    ]
+
+  # Deploy Frontend to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args: [
+      'run', 'deploy', 'ultra-crop-frontend',
+      '--image', 'gcr.io/$PROJECT_ID/ultra-crop-frontend:$COMMIT_SHA',
+      '--region', 'us-central1',
+      '--platform', 'managed',
+      '--allow-unauthenticated',
+      '--port', '80',
+      '--memory', '1Gi',
+      '--cpu', '1',
+      '--max-instances', '5',
+      '--set-env-vars', 'ULTRA_CROP_API_BASE_URL=https://ultra-crop-api-psicxu7eya-uc.a.run.app,MARKET_PRICE_API_BASE_URL=https://market-price-api-psicxu7eya-uc.a.run.app'
+    ]
+
+# Build options
+options:
+  machineType: 'E2_HIGHCPU_8'
+  diskSizeGb: 100
+  logging: CLOUD_LOGGING_ONLY
+
+# Build timeout
+timeout: '1200s'
+
+# Substitution variables
+substitutions:
+  _REGION: 'us-central1'
+  _SERVICE_ACCOUNT: 'ultra-crop-sa@$PROJECT_ID.iam.gserviceaccount.com'
+
+# Build triggers
+images:
+  - 'gcr.io/$PROJECT_ID/ultra-crop-api:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/ultra-crop-api:latest'
+  - 'gcr.io/$PROJECT_ID/market-price-api:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/market-price-api:latest'
+  - 'gcr.io/$PROJECT_ID/ultra-crop-frontend:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/ultra-crop-frontend:latest'

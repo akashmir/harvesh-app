@@ -55,10 +55,10 @@ class AppConfig {
       return dotenv.env['MARKET_PRICE_API_BASE_URL']!;
     }
 
-    // For Android emulator, use 10.0.2.2 (emulator's localhost)
-    // For physical device, use your computer's IP address
-    // For web/desktop, use localhost
-    return 'http://10.0.2.2:5004';
+    // Google Cloud Run URL - deployed market price API
+    // For local development, use 10.0.2.2 (emulator's localhost)
+    // For production, use the Google Cloud Run URL
+    return 'https://market-price-api-273619012635.us-central1.run.app';
   }
 
   static String get _firebaseApiKey =>
@@ -218,11 +218,19 @@ class AppConfig {
 
   // Ultra Crop Recommender API Base URL
   static String get baseUrl {
-    if (dotenv.env['ULTRA_CROP_API_BASE_URL'] != null) {
-      return dotenv.env['ULTRA_CROP_API_BASE_URL']!;
+    final envUrl = dotenv.env['ULTRA_CROP_API_BASE_URL'];
+    print('AppConfig: ULTRA_CROP_API_BASE_URL from env: $envUrl');
+
+    if (envUrl != null) {
+      print('AppConfig: Using environment URL: $envUrl');
+      return envUrl;
     }
-    // Default for Android emulator to reach host machine
-    return 'http://10.0.2.2';
+
+    // Default production URL - using the deployed ultra crop recommender API
+    final defaultUrl =
+        'https://ultra-crop-recommender-api-psicxu7eya-uc.a.run.app';
+    print('AppConfig: Using default URL: $defaultUrl');
+    return defaultUrl;
   }
 
   // Satellite Soil API Base URL
@@ -230,7 +238,7 @@ class AppConfig {
     if (dotenv.env['SATELLITE_SOIL_API_BASE_URL'] != null) {
       return dotenv.env['SATELLITE_SOIL_API_BASE_URL']!;
     }
-    return 'http://10.0.2.2:5006';
+    return 'https://sih2025-soil-api-psicxu7eya-uc.a.run.app';
   }
 
   // Multilingual AI API Base URL
@@ -238,7 +246,7 @@ class AppConfig {
     if (dotenv.env['MULTILINGUAL_AI_API_BASE_URL'] != null) {
       return dotenv.env['MULTILINGUAL_AI_API_BASE_URL']!;
     }
-    return 'http://10.0.2.2:5007';
+    return 'https://sih2025-multilingual-api-psicxu7eya-uc.a.run.app';
   }
 
   // Disease Detection API Base URL
@@ -246,7 +254,7 @@ class AppConfig {
     if (dotenv.env['DISEASE_DETECTION_API_BASE_URL'] != null) {
       return dotenv.env['DISEASE_DETECTION_API_BASE_URL']!;
     }
-    return 'http://10.0.2.2:5008';
+    return 'https://sih2025-disease-api-psicxu7eya-uc.a.run.app';
   }
 
   // Sustainability Scoring API Base URL
@@ -254,7 +262,7 @@ class AppConfig {
     if (dotenv.env['SUSTAINABILITY_SCORING_API_BASE_URL'] != null) {
       return dotenv.env['SUSTAINABILITY_SCORING_API_BASE_URL']!;
     }
-    return 'http://10.0.2.2:5009';
+    return 'https://sih2025-sustainability-api-psicxu7eya-uc.a.run.app';
   }
 
   // Crop Rotation API Base URL
@@ -262,7 +270,7 @@ class AppConfig {
     if (dotenv.env['CROP_ROTATION_API_BASE_URL'] != null) {
       return dotenv.env['CROP_ROTATION_API_BASE_URL']!;
     }
-    return 'http://10.0.2.2:5010';
+    return 'https://sih2025-rotation-api-psicxu7eya-uc.a.run.app';
   }
 
   // Offline Capability API Base URL
@@ -270,7 +278,7 @@ class AppConfig {
     if (dotenv.env['OFFLINE_CAPABILITY_API_BASE_URL'] != null) {
       return dotenv.env['OFFLINE_CAPABILITY_API_BASE_URL']!;
     }
-    return 'http://10.0.2.2:5011';
+    return 'https://sih2025-offline-api-psicxu7eya-uc.a.run.app';
   }
 
   // Integrated Additional Features API Base URL
@@ -278,7 +286,7 @@ class AppConfig {
     if (dotenv.env['SIH_2025_INTEGRATED_API_BASE_URL'] != null) {
       return dotenv.env['SIH_2025_INTEGRATED_API_BASE_URL']!;
     }
-    return 'http://10.0.2.2:5012';
+    return 'https://sih2025-integrated-api-psicxu7eya-uc.a.run.app';
   }
 
   // Satellite Soil API Endpoints

@@ -39,16 +39,36 @@ class WeatherService {
       // First try the backend API
       final backendResponse =
           await _getWeatherFromBackendByCoordinates(latitude, longitude);
-      if (backendResponse['success']) {
-        // Attach a precise label if possible
+      if (backendResponse['success'] == true) {
+        // Normalize backend shape to match direct API shape
+        final data = backendResponse['data'] as Map<String, dynamic>;
+        final current = (data['current'] is Map)
+            ? Map<String, dynamic>.from(data['current'] as Map)
+            : <String, dynamic>{};
+        String? label;
         try {
-          final label = await LocationService.getReadableLocationLabel(
+          label = await LocationService.getReadableLocationLabel(
               latitude, longitude);
-          backendResponse['data']['precise_location_label'] = label;
-          backendResponse['data']['latitude'] = latitude;
-          backendResponse['data']['longitude'] = longitude;
         } catch (_) {}
-        return backendResponse;
+
+        final normalized = <String, dynamic>{
+          'temperature': (current['temperature'] ?? data['temperature'])?.toDouble(),
+          'humidity': (current['humidity'] ?? data['humidity'])?.toDouble(),
+          'description': (data['forecast'] is Map)
+              ? (data['forecast']['weather_advisory'] ?? 'Weather')
+              : 'Weather',
+          'icon': null, // backend mock doesn't provide icon
+          'wind_speed': (current['wind_speed'] ?? data['wind_speed'])?.toDouble(),
+          'pressure': (current['pressure'] ?? data['pressure'])?.toDouble(),
+          'visibility': data['visibility']?.toDouble(),
+          'location': label ?? data['location']?.toString() ?? 'Current Location',
+          'country': data['country'] ?? 'IN',
+          'precise_location_label': label,
+          'latitude': latitude,
+          'longitude': longitude,
+        };
+
+        return {'success': true, 'data': normalized};
       }
     } catch (e) {
       if (kDebugMode) {
@@ -83,8 +103,27 @@ class WeatherService {
     try {
       // First try the backend API
       final backendResponse = await _getWeatherFromBackend(location);
-      if (backendResponse['success']) {
-        return backendResponse;
+      if (backendResponse['success'] == true) {
+        // Normalize backend shape to match direct API shape
+        final data = backendResponse['data'] as Map<String, dynamic>;
+        final current = (data['current'] is Map)
+            ? Map<String, dynamic>.from(data['current'] as Map)
+            : <String, dynamic>{};
+        final normalized = <String, dynamic>{
+          'temperature': (current['temperature'] ?? data['temperature'])?.toDouble(),
+          'humidity': (current['humidity'] ?? data['humidity'])?.toDouble(),
+          'description': (data['forecast'] is Map)
+              ? (data['forecast']['weather_advisory'] ?? 'Weather')
+              : 'Weather',
+          'icon': null,
+          'wind_speed': (current['wind_speed'] ?? data['wind_speed'])?.toDouble(),
+          'pressure': (current['pressure'] ?? data['pressure'])?.toDouble(),
+          'visibility': data['visibility']?.toDouble(),
+          'location': location,
+          'country': data['country'] ?? 'IN',
+          'precise_location_label': location,
+        };
+        return {'success': true, 'data': normalized};
       }
     } catch (e) {
       if (kDebugMode) {

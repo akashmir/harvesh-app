@@ -541,6 +541,290 @@ def get_price_history():
             "error": str(e)
         }), 500
 
+@app.route('/mandis', methods=['GET'])
+def get_mandis():
+    """Get list of mandis with coordinates"""
+    try:
+        # Sample mandi data (in production, this would come from Agmarknet API)
+        mandis = [
+            {
+                'mandi_name': 'Azadpur Mandi',
+                'state': 'Delhi',
+                'district': 'North Delhi',
+                'latitude': 28.7041,
+                'longitude': 77.1025,
+                'crops_available': ['Tomato', 'Onion', 'Potato', 'Rice', 'Wheat']
+            },
+            {
+                'mandi_name': 'Ghazipur Mandi',
+                'state': 'Delhi',
+                'district': 'East Delhi',
+                'latitude': 28.6200,
+                'longitude': 77.3200,
+                'crops_available': ['Rice', 'Wheat', 'Maize', 'Cotton']
+            },
+            {
+                'mandi_name': 'Anandpur Sahib Mandi',
+                'state': 'Punjab',
+                'district': 'Rupnagar',
+                'latitude': 31.2359,
+                'longitude': 76.4974,
+                'crops_available': ['Rice', 'Wheat', 'Maize', 'Sugarcane']
+            },
+            {
+                'mandi_name': 'Ludhiana Mandi',
+                'state': 'Punjab',
+                'district': 'Ludhiana',
+                'latitude': 30.9010,
+                'longitude': 75.8573,
+                'crops_available': ['Wheat', 'Rice', 'Cotton', 'Sugarcane']
+            },
+            {
+                'mandi_name': 'Karnal Mandi',
+                'state': 'Haryana',
+                'district': 'Karnal',
+                'latitude': 29.6857,
+                'longitude': 76.9905,
+                'crops_available': ['Rice', 'Wheat', 'Maize', 'Mustard']
+            },
+            {
+                'mandi_name': 'Hisar Mandi',
+                'state': 'Haryana',
+                'district': 'Hisar',
+                'latitude': 29.1492,
+                'longitude': 75.7217,
+                'crops_available': ['Wheat', 'Cotton', 'Sugarcane', 'Mustard']
+            },
+            {
+                'mandi_name': 'Agra Mandi',
+                'state': 'Uttar Pradesh',
+                'district': 'Agra',
+                'latitude': 27.1767,
+                'longitude': 78.0081,
+                'crops_available': ['Wheat', 'Rice', 'Sugarcane', 'Potato']
+            },
+            {
+                'mandi_name': 'Lucknow Mandi',
+                'state': 'Uttar Pradesh',
+                'district': 'Lucknow',
+                'latitude': 26.8467,
+                'longitude': 80.9462,
+                'crops_available': ['Rice', 'Wheat', 'Sugarcane', 'Potato']
+            },
+            {
+                'mandi_name': 'Pune Mandi',
+                'state': 'Maharashtra',
+                'district': 'Pune',
+                'latitude': 18.5204,
+                'longitude': 73.8567,
+                'crops_available': ['Sugarcane', 'Cotton', 'Soybean', 'Wheat']
+            },
+            {
+                'mandi_name': 'Nagpur Mandi',
+                'state': 'Maharashtra',
+                'district': 'Nagpur',
+                'latitude': 21.1458,
+                'longitude': 79.0882,
+                'crops_available': ['Cotton', 'Soybean', 'Wheat', 'Rice']
+            }
+        ]
+        
+        return jsonify({
+            "success": True,
+            "data": mandis,
+            "total_mandis": len(mandis)
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/mandis/nearest', methods=['GET'])
+def get_nearest_mandis():
+    """Get nearest mandis to user's location"""
+    try:
+        latitude = float(request.args.get('latitude', 0))
+        longitude = float(request.args.get('longitude', 0))
+        limit = int(request.args.get('limit', 5))
+        
+        if latitude == 0 and longitude == 0:
+            return jsonify({
+                "success": False,
+                "error": "Invalid coordinates provided"
+            }), 400
+        
+        # Get all mandis
+        mandis_response = get_mandis()
+        if not mandis_response[0].get('success'):
+            return mandis_response
+        
+        mandis = mandis_response[0].get('data', [])
+        
+        # Calculate distances
+        for mandi in mandis:
+            distance = calculate_distance(
+                latitude, longitude,
+                mandi['latitude'], mandi['longitude']
+            )
+            mandi['distance_km'] = round(distance, 2)
+        
+        # Sort by distance and return top results
+        mandis.sort(key=lambda x: x['distance_km'])
+        nearest_mandis = mandis[:limit]
+        
+        return jsonify({
+            "success": True,
+            "data": nearest_mandis,
+            "user_location": {
+                "latitude": latitude,
+                "longitude": longitude
+            },
+            "total_found": len(nearest_mandis)
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/mandis/prices', methods=['GET'])
+def get_mandi_prices():
+    """Get prices for crops in a specific mandi"""
+    try:
+        mandi_name = request.args.get('mandi_name')
+        if not mandi_name:
+            return jsonify({
+                "success": False,
+                "error": "Mandi name is required"
+            }), 400
+        
+        # Generate sample prices for the mandi
+        prices = generate_mandi_prices(mandi_name)
+        
+        return jsonify({
+            "success": True,
+            "data": prices,
+            "mandi_name": mandi_name,
+            "total_crops": len(prices)
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/prices/location-based', methods=['GET'])
+def get_location_based_prices():
+    """Get prices from nearest mandis based on user location"""
+    try:
+        latitude = float(request.args.get('latitude', 0))
+        longitude = float(request.args.get('longitude', 0))
+        
+        if latitude == 0 and longitude == 0:
+            return jsonify({
+                "success": False,
+                "error": "Invalid coordinates provided"
+            }), 400
+        
+        # Get nearest mandis
+        nearest_response = get_nearest_mandis()
+        if not nearest_response[0].get('success'):
+            return nearest_response
+        
+        nearest_mandis = nearest_response[0].get('data', [])
+        
+        # Get prices from nearest mandis
+        all_prices = []
+        for mandi in nearest_mandis[:3]:  # Top 3 nearest mandis
+            prices = generate_mandi_prices(mandi['mandi_name'])
+            for price in prices:
+                price['mandi_name'] = mandi['mandi_name']
+                price['mandi_distance'] = mandi['distance_km']
+                price['mandi_state'] = mandi['state']
+                price['mandi_district'] = mandi['district']
+            all_prices.extend(prices)
+        
+        return jsonify({
+            "success": True,
+            "data": all_prices,
+            "nearest_mandi": nearest_mandis[0] if nearest_mandis else None,
+            "total_mandis": len(nearest_mandis),
+            "total_prices": len(all_prices)
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+def calculate_distance(lat1, lon1, lat2, lon2):
+    """Calculate distance between two coordinates using Haversine formula"""
+    import math
+    
+    R = 6371  # Earth's radius in kilometers
+    
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    
+    a = (math.sin(dlat/2) * math.sin(dlat/2) +
+         math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
+         math.sin(dlon/2) * math.sin(dlon/2))
+    
+    c = 2 * math.asin(math.sqrt(a))
+    
+    return R * c
+
+def generate_mandi_prices(mandi_name):
+    """Generate sample prices for a mandi"""
+    base_prices = {
+        'Rice': {'min': 20, 'max': 35, 'unit': 'kg'},
+        'Wheat': {'min': 18, 'max': 28, 'unit': 'kg'},
+        'Maize': {'min': 15, 'max': 25, 'unit': 'kg'},
+        'Cotton': {'min': 55, 'max': 80, 'unit': 'kg'},
+        'Sugarcane': {'min': 2.8, 'max': 4.0, 'unit': 'kg'},
+        'Potato': {'min': 12, 'max': 20, 'unit': 'kg'},
+        'Tomato': {'min': 25, 'max': 50, 'unit': 'kg'},
+        'Onion': {'min': 20, 'max': 40, 'unit': 'kg'},
+        'Soybean': {'min': 30, 'max': 45, 'unit': 'kg'},
+        'Mustard': {'min': 40, 'max': 60, 'unit': 'kg'},
+    }
+    
+    prices = []
+    for crop, price_data in base_prices.items():
+        random_factor = random.uniform(0, 1)
+        price = price_data['min'] + (price_data['max'] - price_data['min']) * random_factor
+        
+        prices.append({
+            'crop_name': crop,
+            'current_price': round(price, 2),
+            'unit': price_data['unit'],
+            'price_type': 'wholesale',
+            'date': datetime.now().strftime('%Y-%m-%d'),
+            'market_demand': get_market_demand(price, price_data['min'], price_data['max']),
+            'price_trend': random.choice(['up', 'down', 'stable']),
+            'min_price': price_data['min'],
+            'max_price': price_data['max'],
+        })
+    
+    return prices
+
+def get_market_demand(price, min_price, max_price):
+    """Determine market demand based on price"""
+    range_val = max_price - min_price
+    position = (price - min_price) / range_val
+    
+    if position < 0.3:
+        return 'Low'
+    elif position < 0.7:
+        return 'Medium'
+    else:
+        return 'High'
+
 @app.route('/analytics', methods=['GET'])
 def get_market_analytics():
     """Get market analytics and insights"""

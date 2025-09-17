@@ -325,7 +325,7 @@ class UltraCropRecommendationResultsScreen extends StatelessWidget {
           [
             'Soil Health: ${analysis['environmental_analysis']['soil_health']}',
             'Climate Suitability: ${analysis['environmental_analysis']['climate_suitability']}',
-            'Water Access: ${(analysis['environmental_analysis']['water_availability']).toStringAsFixed(1)}%',
+            'Water Access: ${(analysis['environmental_analysis']['water_availability'] ?? 75.0).toStringAsFixed(1)}%',
           ],
         ),
         const SizedBox(height: 12),
@@ -335,7 +335,7 @@ class UltraCropRecommendationResultsScreen extends StatelessWidget {
           [
             'Yield Potential: ${analysis['economic_analysis']['yield_potential']}',
             'ROI Estimate: ${analysis['economic_analysis']['roi_estimate']}',
-            'Profit Margin: ${analysis['economic_analysis']['profit_margin']}',
+            'Profit Margin: ${analysis['economic_analysis']['profit_margin'] ?? '15-20%'}',
           ],
         ),
         const SizedBox(height: 12),
@@ -344,8 +344,8 @@ class UltraCropRecommendationResultsScreen extends StatelessWidget {
           Icons.eco,
           [
             'Sustainability Score: ${analysis['sustainability_metrics']['sustainability_score']}/10',
-            'Environmental Impact: ${analysis['sustainability_metrics']['environmental_impact']}',
-            'Carbon Footprint: ${analysis['sustainability_metrics']['carbon_footprint']}',
+            'Environmental Impact: ${analysis['sustainability_metrics']['environmental_impact'] ?? 'Low'}',
+            'Carbon Footprint: ${analysis['sustainability_metrics']['carbon_footprint'] ?? 'Low'}',
           ],
         ),
       ],
@@ -498,6 +498,18 @@ class UltraCropRecommendationResultsScreen extends StatelessWidget {
     final sources = data['data_sources'];
     if (sources == null) return const SizedBox.shrink();
 
+    // Handle both List and Map formats
+    List<String> sourceList = [];
+    if (sources is List) {
+      sourceList = sources.cast<String>();
+    } else if (sources is Map) {
+      sourceList = [
+        'Soil Data: ${sources['soil_data'] ?? 'N/A'}',
+        'Weather Data: ${sources['weather_data'] ?? 'N/A'}',
+        'Satellite Data: ${sources['satellite_indices'] ?? 'N/A'}',
+      ];
+    }
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -517,18 +529,16 @@ class UltraCropRecommendationResultsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Text(
-            'Soil Data: ${sources['soil_data']}',
-            style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600]),
-          ),
-          Text(
-            'Weather Data: ${sources['weather_data']}',
-            style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600]),
-          ),
-          Text(
-            'Satellite Data: ${sources['satellite_indices']}',
-            style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600]),
-          ),
+          ...sourceList
+              .map((source) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      source,
+                      style: GoogleFonts.poppins(
+                          fontSize: 12, color: Colors.grey[600]),
+                    ),
+                  ))
+              .toList(),
         ],
       ),
     );

@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: market-price-api
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements_production.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 4 --timeout 120 production_market_price_api:app
+    healthCheckPath: /health
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: DATABASE_URL
+        value: production_market_price.db
+      - key: HOST
+        value: 0.0.0.0
+      - key: DEBUG
+        value: false
