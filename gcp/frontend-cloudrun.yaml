@@ -1,0 +1,58 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: ultra-crop-frontend
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/execution-environment: gen2
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "5"
+        autoscaling.knative.dev/minScale: "1"
+        run.googleapis.com/cpu-throttling: "true"
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      containerConcurrency: 1000
+      timeoutSeconds: 60
+      containers:
+      - name: ultra-crop-frontend
+        image: gcr.io/PROJECT_ID/ultra-crop-frontend:latest
+        ports:
+        - name: http1
+          containerPort: 80
+        env:
+        - name: ULTRA_CROP_API_BASE_URL
+          value: "https://ultra-crop-api-xxxxxxxx-uc.a.run.app"
+        - name: GOOGLE_MAPS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ultra-crop-secrets
+              key: google-maps-api-key
+        resources:
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+          requests:
+            cpu: "0.5"
+            memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+  traffic:
+  - percent: 100
+    latestRevision: true

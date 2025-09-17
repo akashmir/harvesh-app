@@ -1,0 +1,12 @@
+2025-09-17 02:50:50,280 - __main__ - INFO - Scaler loaded successfully
+2025-09-17 02:50:50,282 - __main__ - INFO - Label encoder loaded successfully
+2025-09-17 02:50:50,343 - __main__ - INFO - Random Forest model loaded successfully
+2025-09-17 02:51:02,251 - absl - WARNING - Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2025-09-17 02:51:02,257 - __main__ - INFO - Neural Network model loaded successfully
+2025-09-17 02:51:02,258 - __main__ - INFO - Model metadata loaded successfully
+2025-09-17 02:51:02,259 - __main__ - INFO - Crop database loaded with 6 crops
+2025-09-17 02:51:02,284 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5020
+ * Running on http://172.28.1.88:5020
+2025-09-17 02:51:02,284 - werkzeug - INFO - [33mPress CTRL+C to quit[0m

@@ -1,0 +1,74 @@
+# Cloud Build configuration for Ultra Crop Recommender
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-f'
+      - 'backend/Dockerfile.cloudrun'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/ultra-crop-recommender:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/ultra-crop-recommender:latest'
+      - './backend'
+    dir: '.'
+
+  # Push the Docker image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/ultra-crop-recommender:$COMMIT_SHA'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/ultra-crop-recommender:latest'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'ultra-crop-recommender-api'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/ultra-crop-recommender:$COMMIT_SHA'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--port'
+      - '5020'
+      - '--memory'
+      - '4Gi'
+      - '--cpu'
+      - '4'
+      - '--max-instances'
+      - '20'
+      - '--min-instances'
+      - '1'
+      - '--concurrency'
+      - '50'
+      - '--timeout'
+      - '600'
+      - '--service-account'
+      - 'ultra-crop-sa@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--set-env-vars'
+      - 'ENVIRONMENT=production,API_HOST=0.0.0.0,API_PORT=5020,DEBUG=false,MODEL_PATH=/app/models,CACHE_TTL=3600,ULTRA_REQUEST_TIMEOUT=10.0'
+      - '--set-secrets'
+      - 'OPENWEATHER_API_KEY=openweather-api-key:latest,GOOGLE_EARTH_ENGINE_KEY=google-earth-engine-key:latest,BHUVAN_API_KEY=bhuvan-api-key:latest,SECRET_KEY=secret-key:latest'
+
+# Store images in Container Registry
+images:
+  - 'gcr.io/$PROJECT_ID/ultra-crop-recommender:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/ultra-crop-recommender:latest'
+
+# Build options
+options:
+  machineType: 'E2_HIGHCPU_8'
+  diskSizeGb: 100
+  logging: CLOUD_LOGGING_ONLY
+
+# Timeout for the entire build
+timeout: '1200s'

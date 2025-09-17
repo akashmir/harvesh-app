@@ -1,5 +1,6 @@
 import 'package:geolocator/geolocator.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:permission_handler/permission_handler.dart' as perm;
+import 'package:geocoding/geocoding.dart' as geo;
 import 'package:flutter/foundation.dart';
 
 /// Service for handling location permissions and GPS coordinates
@@ -86,9 +87,9 @@ class LocationService {
         return null;
       }
 
-      // Get current position
+      // Get current position with best available accuracy
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        desiredAccuracy: LocationAccuracy.bestForNavigation,
         timeLimit: _timeout,
       );
 
@@ -177,7 +178,7 @@ class LocationService {
   /// Open app settings if permission is denied forever
   static Future<bool> openAppSettings() async {
     try {
-      return await openAppSettings();
+      return await perm.openAppSettings();
     } catch (e) {
       if (kDebugMode) {
         print('Error opening app settings: $e');
@@ -203,14 +204,32 @@ class LocationService {
   static Future<String> getLocationName(
       double latitude, double longitude) async {
     try {
-      // For now, return a simple location name
-      // In a real app, you would use reverse geocoding
-      return 'Location: ${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}';
+      final placemarks =
+          await geo.placemarkFromCoordinates(latitude, longitude);
+      if (placemarks.isNotEmpty) {
+        final p = placemarks.first;
+        final parts = <String>[
+          if ((p.subLocality ?? '').isNotEmpty) p.subLocality!,
+          if ((p.locality ?? '').isNotEmpty) p.locality!,
+        ];
+        if (parts.isEmpty) {
+          final fallback = (p.name ?? p.administrativeArea ?? p.country);
+          return fallback ?? 'Current Location';
+        }
+        return parts.join(', ');
+      }
+      return 'Current Location';
     } catch (e) {
       if (kDebugMode) {
         print('Error getting location name: $e');
       }
-      return 'Unknown Location';
+      return 'Current Location';
     }
+  }
+
+  /// Get a human-readable location label prioritizing subLocality/locality
+  static Future<String> getReadableLocationLabel(
+      double latitude, double longitude) async {
+    return getLocationName(latitude, longitude);
   }
 }

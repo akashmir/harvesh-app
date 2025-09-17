@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class EnhancedAboutScreen extends StatefulWidget {
   const EnhancedAboutScreen({super.key});
@@ -96,7 +97,7 @@ class _EnhancedAboutScreenState extends State<EnhancedAboutScreen>
         onPressed: () => Navigator.pop(context),
       ),
       title: const Text(
-        'About AgriSmart',
+        'About Harvest',
         style: TextStyle(
           color: Colors.white,
           fontSize: 18,
@@ -230,7 +231,7 @@ class _EnhancedAboutScreenState extends State<EnhancedAboutScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'About AgriSmart',
+            'About Harvest',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -239,7 +240,7 @@ class _EnhancedAboutScreenState extends State<EnhancedAboutScreen>
           ),
           const SizedBox(height: 16),
           Text(
-            'AgriSmart is your comprehensive farming companion that revolutionizes agricultural decision-making through cutting-edge technology. Our app combines the power of artificial intelligence, real-time data analysis, and expert agricultural knowledge to help farmers make informed decisions and maximize their crop yields.',
+            'Harvest is your comprehensive farming companion that brings precision agriculture to your fingertips. It combines AI-powered insights, satellite soil signals, real-time weather, and market intelligence to help you plan, grow, and sell smarter.',
             style: TextStyle(
               fontSize: 16,
               color: Colors.grey[700],
@@ -313,10 +314,10 @@ class _EnhancedAboutScreenState extends State<EnhancedAboutScreen>
           ),
           const SizedBox(height: 20),
           _buildFeatureItem(
-            icon: Icons.location_on,
-            title: 'Smart Crop Recommendations',
+            icon: Icons.psychology,
+            title: 'Ultra Crop Recommender',
             description:
-                'Get AI-powered crop suggestions based on your location, soil conditions, and weather patterns.',
+                'Advanced AI with satellite soil analysis, ML ensembles, and market trends to recommend the most profitable crops.',
             color: const Color(0xFF4CAF50),
           ),
           _buildFeatureItem(
@@ -328,10 +329,17 @@ class _EnhancedAboutScreenState extends State<EnhancedAboutScreen>
           ),
           _buildFeatureItem(
             icon: Icons.cloud,
-            title: 'Real-time Weather Updates',
+            title: 'Precise Weather by GPS',
             description:
-                'Stay informed with accurate weather forecasts and agricultural advisories.',
+                'High-accuracy, location-precise weather using your exact coordinates with reverse‑geocoded labeling.',
             color: const Color(0xFF00BCD4),
+          ),
+          _buildFeatureItem(
+            icon: Icons.eco,
+            title: 'Sustainability Scoring',
+            description:
+                'Assess crop plans with environment-friendly scoring to balance yield and sustainability.',
+            color: const Color(0xFF009688),
           ),
           _buildFeatureItem(
             icon: Icons.article,
@@ -615,22 +623,39 @@ class _EnhancedAboutScreenState extends State<EnhancedAboutScreen>
                   icon: Icons.email,
                   label: 'Email Support',
                   onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Email support coming soon!')),
+                    final uri = Uri(
+                      scheme: 'mailto',
+                      path: 'akashbashir2442@gmail.com',
                     );
+                    launchUrl(uri).then((ok) {
+                      if (!ok) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Unable to open email app')),
+                        );
+                      }
+                    });
                   },
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _buildContactButton(
-                  icon: Icons.help,
-                  label: 'Help Center',
+                  icon: Icons.call,
+                  label: 'Call Support',
                   onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Help center coming soon!')),
+                    final uri = Uri(
+                      scheme: 'tel',
+                      path: '9697205205',
                     );
+                    launchUrl(uri).then((ok) {
+                      if (!ok) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Unable to open dialer')),
+                        );
+                      }
+                    });
                   },
                 ),
               ),

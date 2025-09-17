@@ -1,0 +1,46 @@
+# Ultra Crop Recommender API - Cloud Run Requirements
+# Simplified requirements for Cloud Run deployment
+
+# Core Flask dependencies
+Flask==2.3.3
+Flask-CORS==4.0.0
+Werkzeug==2.3.7
+
+# Data processing and analysis
+numpy==1.24.3
+pandas==2.0.3
+scipy==1.11.1
+
+# Machine Learning (compatible versions)
+scikit-learn==1.3.0
+xgboost==1.7.6
+joblib==1.3.2
+
+# Database
+SQLAlchemy==2.0.19
+Flask-SQLAlchemy==3.0.5
+
+# HTTP requests
+requests==2.31.0
+urllib3==2.0.4
+
+# Environment and configuration
+python-dotenv==1.0.0
+
+# Logging
+structlog==23.1.0
+
+# Security
+cryptography==41.0.3
+PyJWT==2.8.0
+
+# Production server
+gunicorn==21.2.0
+
+# Additional utilities
+python-dateutil==2.8.2
+pytz==2023.3
+click==8.1.7
+itsdangerous==2.1.2
+Jinja2==3.1.2
+MarkupSafe==2.1.3

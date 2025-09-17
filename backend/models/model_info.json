@@ -1,36 +1,75 @@
 {
-  "feature_names": [
-    "N",
-    "P",
-    "K",
+  "version": "2.0",
+  "training_date": "2025-09-17T01:55:06.375857",
+  "features": [
+    "nitrogen",
+    "phosphorus",
+    "potassium",
     "temperature",
     "humidity",
     "ph",
     "rainfall"
   ],
-  "class_names": [
-    "apple",
-    "banana",
-    "blackgram",
-    "chickpea",
-    "coconut",
-    "coffee",
-    "cotton",
-    "grapes",
-    "jute",
-    "kidneybeans",
-    "lentil",
+  "crops": [
+    "rice",
     "maize",
-    "mango",
+    "chickpea",
+    "kidneybeans",
+    "pigeonpeas",
     "mothbeans",
     "mungbean",
+    "blackgram",
+    "lentil",
+    "pomegranate",
+    "banana",
+    "mango",
+    "grapes",
+    "watermelon",
     "muskmelon",
+    "apple",
     "orange",
     "papaya",
-    "pigeonpeas",
-    "pomegranate",
-    "rice",
-    "watermelon"
+    "coconut",
+    "cotton",
+    "jute",
+    "coffee"
   ],
-  "num_classes": 22
+  "model_scores": {
+    "random_forest": 0.8868868868868869,
+    "neural_network": 0.8723723723723724,
+    "xgboost": 0.8793793793793794,
+    "ensemble": 0.8883883883883884
+  },
+  "training_samples": 7990,
+  "test_samples": 1998,
+  "feature_importance": [
+    {
+      "feature": "phosphorus",
+      "importance": 0.20571678893336343
+    },
+    {
+      "feature": "rainfall",
+      "importance": 0.1890656001210116
+    },
+    {
+      "feature": "potassium",
+      "importance": 0.1740259782124994
+    },
+    {
+      "feature": "nitrogen",
+      "importance": 0.15727568550796514
+    },
+    {
+      "feature": "humidity",
+      "importance": 0.1281295911698564
+    },
+    {
+      "feature": "temperature",
+      "importance": 0.1039179051636255
+    },
+    {
+      "feature": "ph",
+      "importance": 0.04186845089167848
+    }
+  ]
 }

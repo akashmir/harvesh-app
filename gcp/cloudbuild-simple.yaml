@@ -1,0 +1,12 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-f'
+      - 'backend/Dockerfile.ultra-crop'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/ultra-crop-recommender:latest'
+      - './backend'
+
+images:
+  - 'gcr.io/$PROJECT_ID/ultra-crop-recommender:latest'

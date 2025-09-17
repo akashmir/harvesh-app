@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ultra-crop
+  labels:
+    name: ultra-crop
+    app: ultra-crop-recommender

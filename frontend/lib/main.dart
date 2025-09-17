@@ -33,6 +33,7 @@ import 'screens/sih_2025_dashboard.dart';
 import 'screens/sih_2025_soil_analysis_screen.dart';
 import 'screens/sih_2025_multilingual_screen.dart';
 import 'screens/sih_2025_sustainability_screen.dart';
+import 'screens/ultra_crop_recommender_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -150,6 +151,8 @@ class MyApp extends StatelessWidget {
               const Sih2025MultilingualScreen(),
           '/sih_2025_sustainability': (context) =>
               const Sih2025SustainabilityScreen(),
+          '/ultra_crop_recommender': (context) =>
+              const UltraCropRecommenderScreen(),
         },
       ),
     );

@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # Ultra Crop Recommender Backend API
+  ultra-crop-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ultra-crop-api
+    ports:
+      - "5020:5020"
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=5020
+      - DEBUG=false
+      - MODEL_PATH=/app/models
+      - CACHE_TTL=3600
+      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY:-}
+      - SOIL_GRIDS_API_KEY=${SOIL_GRIDS_API_KEY:-}
+      - SECRET_KEY=${SECRET_KEY:-ultra-crop-secret-key-2024}
+    volumes:
+      - ./backend/models:/app/models
+      - ./backend/logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5020/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ultra-crop-network
+
+  # Ultra Crop Recommender Frontend
+  ultra-crop-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ultra-crop-frontend
+    ports:
+      - "80:80"
+    environment:
+      - ULTRA_CROP_API_BASE_URL=http://ultra-crop-api:5020
+    depends_on:
+      - ultra-crop-api
+    restart: unless-stopped
+    networks:
+      - ultra-crop-network
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: ultra-crop-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - ultra-crop-network
+
+  # PostgreSQL database (optional)
+  postgres:
+    image: postgres:15-alpine
+    container_name: ultra-crop-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=ultra_crop
+      - POSTGRES_USER=ultra_crop_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ultra_crop_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - ultra-crop-network
+
+  # Nginx reverse proxy (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: ultra-crop-nginx
+    ports:
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - ultra-crop-api
+      - ultra-crop-frontend
+    restart: unless-stopped
+    networks:
+      - ultra-crop-network
+
+volumes:
+  redis_data:
+  postgres_data:
+
+networks:
+  ultra-crop-network:
+    driver: bridge

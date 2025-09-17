@@ -1,0 +1,82 @@
+# Google Cloud Build configuration for Ultra Crop Recommender
+steps:
+  # Build backend API image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build', 
+      '-t', 'gcr.io/$PROJECT_ID/ultra-crop-api:$COMMIT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/ultra-crop-api:latest',
+      './backend'
+    ]
+    dir: '.'
+
+  # Build frontend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-t', 'gcr.io/$PROJECT_ID/ultra-crop-frontend:$COMMIT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/ultra-crop-frontend:latest',
+      './frontend'
+    ]
+    dir: '.'
+
+  # Push backend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/ultra-crop-api:$COMMIT_SHA']
+
+  # Push frontend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/ultra-crop-frontend:$COMMIT_SHA']
+
+  # Deploy to Cloud Run - Backend
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args: [
+      'run', 'deploy', 'ultra-crop-api',
+      '--image', 'gcr.io/$PROJECT_ID/ultra-crop-api:$COMMIT_SHA',
+      '--region', 'us-central1',
+      '--platform', 'managed',
+      '--allow-unauthenticated',
+      '--port', '5020',
+      '--memory', '2Gi',
+      '--cpu', '2',
+      '--max-instances', '10',
+      '--set-env-vars', 'ENVIRONMENT=production,API_HOST=0.0.0.0,API_PORT=5020'
+    ]
+
+  # Deploy to Cloud Run - Frontend
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args: [
+      'run', 'deploy', 'ultra-crop-frontend',
+      '--image', 'gcr.io/$PROJECT_ID/ultra-crop-frontend:$COMMIT_SHA',
+      '--region', 'us-central1',
+      '--platform', 'managed',
+      '--allow-unauthenticated',
+      '--port', '80',
+      '--memory', '1Gi',
+      '--cpu', '1',
+      '--max-instances', '5',
+      '--set-env-vars', 'ULTRA_CROP_API_BASE_URL=https://ultra-crop-api-xxxxxxxx-uc.a.run.app'
+    ]
+
+# Build options
+options:
+  machineType: 'E2_HIGHCPU_8'
+  diskSizeGb: 100
+  logging: CLOUD_LOGGING_ONLY
+
+# Build timeout
+timeout: '1200s'
+
+# Substitution variables
+substitutions:
+  _REGION: 'us-central1'
+  _SERVICE_ACCOUNT: 'ultra-crop-sa@$PROJECT_ID.iam.gserviceaccount.com'
+
+# Build triggers
+images:
+  - 'gcr.io/$PROJECT_ID/ultra-crop-api:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/ultra-crop-api:latest'
+  - 'gcr.io/$PROJECT_ID/ultra-crop-frontend:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/ultra-crop-frontend:latest'

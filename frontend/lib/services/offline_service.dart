@@ -30,7 +30,7 @@ class OfflineService {
   }
 
   /// Check if device is online
-  static bool get isOnline => _connectivityStatus != ConnectivityResult.none;
+  static bool get isOnline => _connectivityStatus != null && _connectivityStatus != ConnectivityResult.none;
 
   /// Check if device is offline
   static bool get isOffline => !isOnline;

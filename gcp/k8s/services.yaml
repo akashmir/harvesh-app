@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ultra-crop-api-service
+  namespace: ultra-crop
+  labels:
+    app: ultra-crop-api
+spec:
+  selector:
+    app: ultra-crop-api
+  ports:
+  - name: http
+    port: 5020
+    targetPort: 5020
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ultra-crop-frontend-service
+  namespace: ultra-crop
+  labels:
+    app: ultra-crop-frontend
+spec:
+  selector:
+    app: ultra-crop-frontend
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  type: ClusterIP

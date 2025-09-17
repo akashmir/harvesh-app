@@ -216,6 +216,15 @@ class AppConfig {
 
   // Additional Features Enhanced APIs Configuration
 
+  // Ultra Crop Recommender API Base URL
+  static String get baseUrl {
+    if (dotenv.env['ULTRA_CROP_API_BASE_URL'] != null) {
+      return dotenv.env['ULTRA_CROP_API_BASE_URL']!;
+    }
+    // Default for Android emulator to reach host machine
+    return 'http://10.0.2.2';
+  }
+
   // Satellite Soil API Base URL
   static String get _satelliteSoilApiBaseUrl {
     if (dotenv.env['SATELLITE_SOIL_API_BASE_URL'] != null) {

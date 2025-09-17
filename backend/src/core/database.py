@@ -186,13 +186,26 @@ def get_db():
 
 def init_database():
     """Initialize database tables"""
+    global engine, SessionLocal
     try:
         Base.metadata.create_all(bind=engine)
         logging.info("✅ Database tables created successfully")
         return True
     except Exception as e:
         logging.error(f"❌ Error creating database tables: {e}")
-        return False
+        # Fallback to SQLite if PostgreSQL is unavailable
+        try:
+            from sqlalchemy import create_engine as _create_engine
+            sqlite_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'sih_2025_integrated.db'))
+            sqlite_url = f"sqlite:///{sqlite_path}"
+            engine = _create_engine(sqlite_url, echo=False, connect_args={"check_same_thread": False})
+            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+            Base.metadata.create_all(bind=engine)
+            logging.warning(f"⚠️ Falling back to SQLite database at {sqlite_path}")
+            return True
+        except Exception as sqlite_error:
+            logging.error(f"❌ SQLite fallback failed: {sqlite_error}")
+            return False
 
 def test_connection():
     """Test database connection"""

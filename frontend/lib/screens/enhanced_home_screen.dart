@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:crop/widgets/enhanced_navigation_drawer.dart';
-import 'farmer_friendly_crop_screen.dart';
+import 'ultra_crop_recommender_screen.dart';
 import 'enhanced_blog_screen.dart';
 import 'enhanced_pest_detection_screen.dart';
 import 'query_history_screen.dart';
@@ -11,8 +11,6 @@ import 'field_management_screen.dart';
 import 'yield_prediction_screen.dart';
 import 'market_price_screen.dart';
 import 'weather_integration_screen.dart';
-import '../config/app_config.dart';
-import '../services/network_service.dart';
 import '../services/weather_service.dart';
 import '../services/location_service.dart';
 
@@ -132,6 +130,8 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
               children: [
                 _buildRealTimeWeatherCard(),
                 const SizedBox(height: 24),
+                _buildUltraRecommenderHero(),
+                const SizedBox(height: 24),
                 _buildMainFeaturesGrid(),
                 const SizedBox(height: 24),
                 _buildAdditionalFeatures(),
@@ -195,6 +195,182 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildUltraRecommenderHero() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF1B5E20),
+            Color(0xFF2E7D32),
+            Color(0xFF388E3C),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1B5E20).withOpacity(0.3),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.psychology,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '🚀 ULTRA CROP RECOMMENDER',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'NEW FEATURE',
+                      style: TextStyle(
+                        color: Colors.amber,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          const Text(
+            'Advanced AI-powered crop recommendations using:',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Features List
+          const Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    FeatureItem(icon: '🛰️', text: 'Satellite Soil Analysis'),
+                    FeatureItem(icon: '🌦️', text: 'Weather Patterns'),
+                    FeatureItem(icon: '🤖', text: 'ML Ensemble Models'),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    FeatureItem(icon: '📊', text: 'Market Analysis'),
+                    FeatureItem(icon: '💰', text: 'Profit Calculations'),
+                    FeatureItem(icon: '🌱', text: 'Sustainability Score'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          // CTA Button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const UltraCropRecommenderScreen(),
+                ),
+              ),
+              icon: const Icon(Icons.rocket_launch, color: Color(0xFF1B5E20)),
+              label: const Text(
+                'TRY ULTRA RECOMMENDER',
+                style: TextStyle(
+                  color: Color(0xFF1B5E20),
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Confidence Badge
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.verified, color: Colors.amber, size: 16),
+                    SizedBox(width: 4),
+                    Text(
+                      'AI-Powered • 95% Accuracy',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -309,7 +485,9 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
-                              _currentWeather!['location'] ?? _selectedLocation,
+                              _currentWeather!['precise_location_label'] ??
+                                  _currentWeather!['location'] ??
+                                  _selectedLocation,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 18,
@@ -422,7 +600,7 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          '🚀 Your Farming Tools',
+          'Main Features',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
@@ -439,55 +617,26 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
           childAspectRatio: 1.0,
           children: [
             _buildMainFeatureCard(
-              title: '🌾 Smart Crop Recommender',
-              subtitle: 'Find the best crops for your field easily',
-              icon: Icons.eco,
-              color: const Color(0xFF8BC34A),
+              title: '🚀 ULTRA CROP RECOMMENDER',
+              subtitle: 'AI-powered satellite analysis with ML ensemble',
+              icon: Icons.psychology,
+              color: const Color(0xFF1B5E20),
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (context) => const FarmerFriendlyCropScreen()),
+                    builder: (context) => const UltraCropRecommenderScreen()),
               ),
             ),
             _buildMainFeatureCard(
-              title: '🔍 Plant Doctor',
-              subtitle: 'Take a photo to check plant health',
-              icon: Icons.camera_alt,
-              color: const Color(0xFFF44336),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => const EnhancedPestDetectionScreen()),
-              ),
-            ),
-            _buildMainFeatureCard(
-              title: '📊 Yield Calculator',
+              title: 'Yield Calculator',
               subtitle: 'Know how much you can harvest',
               icon: Icons.analytics,
-              color: const Color(0xFF4CAF50),
+              color: const Color(0xFF1D79C5),
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
                     builder: (context) => const YieldPredictionScreen()),
               ),
-            ),
-            _buildMainFeatureCard(
-              title: '🏞️ My Fields',
-              subtitle: 'Keep track of all your fields',
-              icon: Icons.agriculture,
-              color: const Color(0xFF2196F3),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => const FieldManagementScreen()),
-              ),
-            ),
-            _buildMainFeatureCard(
-              title: '🚀 Additional Features',
-              subtitle: 'Advanced AI-powered farming solutions',
-              icon: Icons.smart_toy,
-              color: const Color(0xFF9C27B0),
-              onTap: () => Navigator.pushNamed(context, '/sih_2025_dashboard'),
             ),
           ],
         ),
@@ -580,7 +729,7 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          '📚 More Helpful Tools',
+          'Additional Features',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -588,6 +737,18 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
           ),
         ),
         const SizedBox(height: 16),
+        _buildAdditionalFeatureCard(
+          title: 'Crop Doctor',
+          subtitle: 'Take a photo to check plant health',
+          icon: Icons.camera_alt,
+          color: const Color(0xFFF44336),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const EnhancedPestDetectionScreen()),
+          ),
+        ),
+        const SizedBox(height: 12),
         _buildAdditionalFeatureCard(
           title: '📖 Farming Tips',
           subtitle: 'Learn from expert farmers',
@@ -631,6 +792,14 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
             MaterialPageRoute(
                 builder: (context) => const YieldPredictionScreen()),
           ),
+        ),
+        const SizedBox(height: 12),
+        _buildAdditionalFeatureCard(
+          title: 'More Additional Features',
+          subtitle: 'Advanced AI-powered farming solutions',
+          icon: Icons.smart_toy,
+          color: const Color(0xFF9C27B0),
+          onTap: () => Navigator.pushNamed(context, '/sih_2025_dashboard'),
         ),
         const SizedBox(height: 12),
         _buildAdditionalFeatureCard(
@@ -847,6 +1016,44 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
           ),
         ),
       ],
+    );
+  }
+}
+
+// Helper Widget for Feature Items
+class FeatureItem extends StatelessWidget {
+  final String icon;
+  final String text;
+
+  const FeatureItem({
+    super.key,
+    required this.icon,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Text(
+            icon,
+            style: const TextStyle(fontSize: 16),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

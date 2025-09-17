@@ -40,6 +40,14 @@ class WeatherService {
       final backendResponse =
           await _getWeatherFromBackendByCoordinates(latitude, longitude);
       if (backendResponse['success']) {
+        // Attach a precise label if possible
+        try {
+          final label = await LocationService.getReadableLocationLabel(
+              latitude, longitude);
+          backendResponse['data']['precise_location_label'] = label;
+          backendResponse['data']['latitude'] = latitude;
+          backendResponse['data']['longitude'] = longitude;
+        } catch (_) {}
         return backendResponse;
       }
     } catch (e) {
@@ -52,6 +60,11 @@ class WeatherService {
     try {
       final directResponse =
           await _getWeatherFromOpenWeatherMapByCoordinates(latitude, longitude);
+      try {
+        final label =
+            await LocationService.getReadableLocationLabel(latitude, longitude);
+        directResponse['data']['precise_location_label'] = label;
+      } catch (_) {}
       return directResponse;
     } catch (e) {
       if (kDebugMode) {

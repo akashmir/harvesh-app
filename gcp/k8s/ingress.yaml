@@ -1,0 +1,42 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ultra-crop-ingress
+  namespace: ultra-crop
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.global-static-ip-name: "ultra-crop-ip"
+    networking.gke.io/managed-certificates: "ultra-crop-ssl-cert"
+    kubernetes.io/ingress.allow-http: "true"
+spec:
+  rules:
+  - host: ultra-crop-api.yourdomain.com
+    http:
+      paths:
+      - path: /*
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: ultra-crop-api-service
+            port:
+              number: 5020
+  - host: ultra-crop.yourdomain.com
+    http:
+      paths:
+      - path: /*
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: ultra-crop-frontend-service
+            port:
+              number: 80
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: ultra-crop-ssl-cert
+  namespace: ultra-crop
+spec:
+  domains:
+  - ultra-crop-api.yourdomain.com
+  - ultra-crop.yourdomain.com
