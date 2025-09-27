@@ -639,6 +639,17 @@ class _EnhancedHomeScreenState extends State<EnhancedHomeScreen>
                     builder: (context) => const AiYieldAdvisoryScreen()),
               ),
             ),
+            _buildMainFeatureCard(
+              title: '🧪 Disease Detection',
+              subtitle: 'On-device YOLOv8 plant doctor',
+              icon: Icons.camera_alt,
+              color: const Color(0xFFF44336),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const EnhancedPestDetectionScreen()),
+              ),
+            ),
           ],
         ),
       ],
