@@ -21,7 +21,6 @@ class _SeasonalCropsScreenState extends State<SeasonalCropsScreen>
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
 
-  Map<String, dynamic>? _seasonsData;
   List<Map<String, dynamic>>? _cropsData;
   bool _isLoading = true;
   String? _errorMessage;
@@ -84,13 +83,6 @@ class _SeasonalCropsScreenState extends State<SeasonalCropsScreen>
         _isLoading = true;
         _errorMessage = null;
       });
-
-      // Load seasons data
-      final seasonsResponse =
-          await NetworkService.get(AppConfig.cropCalendarSeasonsEndpoint);
-      if (seasonsResponse['success']) {
-        _seasonsData = seasonsResponse['data'];
-      }
 
       // Load crops for selected season
       await _loadCropsForSeason(_selectedSeason);

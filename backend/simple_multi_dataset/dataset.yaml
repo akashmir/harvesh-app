@@ -1,0 +1,23 @@
+names:
+- Apple_healthy
+- Apple_scab
+- Apple_black_rot
+- Tomato_healthy
+- Tomato_early_blight
+- Tomato_late_blight
+- Corn_healthy
+- Corn_common_rust
+- Corn_leaf_spot
+- Potato_healthy
+- Potato_early_blight
+- Potato_late_blight
+- Rice_healthy
+- Rice_bacterial_blight
+- Rice_brown_spot
+- Wheat_healthy
+- Wheat_rust
+- Wheat_powdery_mildew
+nc: 18
+path: C:\Users\Akash\Desktop\SIH2\harvest-enterprise-app\backend\simple_multi_dataset
+train: images/train
+val: images/val

@@ -114,8 +114,7 @@ class _EnhancedSimpleLocationCropScreenState
           position.latitude, position.longitude);
 
       setState(() {
-        locationInfo = locationName ??
-            "Location: ${position.latitude.toStringAsFixed(2)}, ${position.longitude.toStringAsFixed(2)}";
+        locationInfo = locationName;
         isLocationLoading = false;
       });
 

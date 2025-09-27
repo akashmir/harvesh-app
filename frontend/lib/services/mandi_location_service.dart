@@ -93,40 +93,6 @@ class MandiLocationService {
     }
   }
 
-  /// Generate fallback mandi data when API is unavailable
-  static List<Map<String, dynamic>> _generateFallbackMandis(
-      double latitude, double longitude) {
-    return [
-      {
-        'mandi_name': 'Sample Mandi 1',
-        'state': 'Sample State',
-        'district': 'Sample District',
-        'latitude': latitude + 0.01,
-        'longitude': longitude + 0.01,
-        'distance_km': 5.0,
-        'crops_available': ['Rice', 'Wheat', 'Maize', 'Cotton', 'Tomato']
-      },
-      {
-        'mandi_name': 'Sample Mandi 2',
-        'state': 'Sample State',
-        'district': 'Sample District',
-        'latitude': latitude - 0.01,
-        'longitude': longitude + 0.01,
-        'distance_km': 8.0,
-        'crops_available': ['Wheat', 'Rice', 'Sugarcane', 'Potato']
-      },
-      {
-        'mandi_name': 'Sample Mandi 3',
-        'state': 'Sample State',
-        'district': 'Sample District',
-        'latitude': latitude + 0.01,
-        'longitude': longitude - 0.01,
-        'distance_km': 12.0,
-        'crops_available': ['Cotton', 'Soybean', 'Wheat', 'Rice']
-      }
-    ];
-  }
-
   /// Get market prices from nearest mandis
   static Future<Map<String, dynamic>> getLocationBasedMarketPrices() async {
     try {
@@ -158,52 +124,6 @@ class MandiLocationService {
         'message': 'No mandis found near your location'
       };
     }
-  }
-
-  /// Generate fallback prices when API is unavailable
-  static List<Map<String, dynamic>> _generateFallbackPrices(
-      double latitude, double longitude) {
-    final basePrices = {
-      'Rice': {'min': 20.0, 'max': 35.0, 'unit': 'kg'},
-      'Wheat': {'min': 18.0, 'max': 28.0, 'unit': 'kg'},
-      'Maize': {'min': 15.0, 'max': 25.0, 'unit': 'kg'},
-      'Cotton': {'min': 55.0, 'max': 80.0, 'unit': 'kg'},
-      'Tomato': {'min': 25.0, 'max': 50.0, 'unit': 'kg'},
-    };
-
-    List<Map<String, dynamic>> prices = [];
-
-    basePrices.forEach((crop, priceData) {
-      final random = DateTime.now().millisecondsSinceEpoch % 1000 / 1000.0;
-      final price = (priceData['min'] as double) +
-          ((priceData['max'] as double) - (priceData['min'] as double)) *
-              random;
-
-      prices.add({
-        'crop_name': crop,
-        'current_price': price.toStringAsFixed(2),
-        'unit': priceData['unit'],
-        'price_type': 'wholesale',
-        'date': DateTime.now().toIso8601String().split('T')[0],
-        'market_demand': _getMarketDemand(
-            price, priceData['min'] as double, priceData['max'] as double),
-        'mandi_name': 'Sample Mandi',
-        'mandi_distance': 5.0,
-        'mandi_state': 'Sample State',
-        'mandi_district': 'Sample District',
-      });
-    });
-
-    return prices;
-  }
-
-  static String _getMarketDemand(double price, double min, double max) {
-    final range = max - min;
-    final position = (price - min) / range;
-
-    if (position < 0.3) return 'Low';
-    if (position < 0.7) return 'Medium';
-    return 'High';
   }
 
   /// Get market prices for a specific mandi

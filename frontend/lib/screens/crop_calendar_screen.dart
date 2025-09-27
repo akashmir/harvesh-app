@@ -4,7 +4,6 @@ import 'package:crop/services/network_service.dart';
 import 'package:crop/config/app_config.dart';
 import 'package:crop/widgets/loading_widget.dart';
 import 'package:crop/widgets/error_widget.dart';
-import 'crop_schedule_detail_screen.dart';
 import 'monthly_calendar_screen.dart';
 import 'seasonal_crops_screen.dart';
 

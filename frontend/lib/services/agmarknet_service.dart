@@ -285,69 +285,6 @@ class AgmarknetService {
     };
   }
 
-  /// Generate immediate fallback prices for location-based data
-  static List<Map<String, dynamic>> _generateLocationBasedFallbackPrices(
-      double latitude, double longitude) {
-    final basePrices = {
-      'Rice': {'min': 20.0, 'max': 35.0, 'unit': 'kg'},
-      'Wheat': {'min': 18.0, 'max': 28.0, 'unit': 'kg'},
-      'Maize': {'min': 15.0, 'max': 25.0, 'unit': 'kg'},
-      'Cotton': {'min': 55.0, 'max': 80.0, 'unit': 'kg'},
-      'Tomato': {'min': 25.0, 'max': 50.0, 'unit': 'kg'},
-      'Onion': {'min': 20.0, 'max': 40.0, 'unit': 'kg'},
-      'Soybean': {'min': 30.0, 'max': 45.0, 'unit': 'kg'},
-      'Mustard': {'min': 40.0, 'max': 60.0, 'unit': 'kg'},
-    };
-
-    List<Map<String, dynamic>> allPrices = [];
-
-    // Generate prices for 3 sample mandis
-    final mandis = [
-      {
-        'name': 'Sample Mandi 1',
-        'distance': 5.0,
-        'state': 'Sample State',
-        'district': 'Sample District'
-      },
-      {
-        'name': 'Sample Mandi 2',
-        'distance': 8.0,
-        'state': 'Sample State',
-        'district': 'Sample District'
-      },
-      {
-        'name': 'Sample Mandi 3',
-        'distance': 12.0,
-        'state': 'Sample State',
-        'district': 'Sample District'
-      },
-    ];
-
-    for (var mandi in mandis) {
-      basePrices.forEach((crop, priceData) {
-        final random = DateTime.now().millisecondsSinceEpoch % 1000 / 1000.0;
-        final price = (priceData['min'] as double) +
-            ((priceData['max'] as double) - (priceData['min'] as double)) *
-                random;
-
-        allPrices.add({
-          'crop_name': crop,
-          'current_price': price.toStringAsFixed(2),
-          'unit': priceData['unit'],
-          'price_type': 'wholesale',
-          'date': DateTime.now().toIso8601String().split('T')[0],
-          'market_demand': _getMarketDemand(
-              price, priceData['min'] as double, priceData['max'] as double),
-          'mandi_name': mandi['name'],
-          'mandi_distance': mandi['distance'],
-          'mandi_state': mandi['state'],
-          'mandi_district': mandi['district'],
-        });
-      });
-    }
-
-    return allPrices;
-  }
 
   /// Calculate distance between two coordinates using Haversine formula
   static double _calculateDistance(

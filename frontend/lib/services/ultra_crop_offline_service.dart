@@ -10,7 +10,6 @@ class UltraCropOfflineService {
   static const String _offlineModelsKey = 'ultra_offline_models';
   static const String _cachedRecommendationsKey =
       'ultra_cached_recommendations';
-  static const Duration _cacheValidityDuration = Duration(days: 7);
 
   /// Check if offline mode is available
   static Future<bool> isOfflineModeAvailable() async {

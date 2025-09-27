@@ -558,7 +558,6 @@ class _WeatherAlertsScreenState extends State<WeatherAlertsScreen>
 
   String _getAgriculturalAdvice(Map<String, dynamic> alert) {
     final alertType = alert['alert_type']?.toLowerCase() ?? '';
-    final severity = alert['severity']?.toLowerCase() ?? '';
 
     switch (alertType) {
       case 'heat wave':

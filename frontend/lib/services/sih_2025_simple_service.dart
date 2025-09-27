@@ -442,7 +442,6 @@ class Sih2025SimpleService {
   /// Get sustainability recommendations based on data
   String _getSustainabilityRecommendations(Map<String, dynamic> data) {
     final score = data['sustainability_score'] ?? 85.0;
-    final carbonFootprint = data['carbon_footprint'] ?? 'Low';
 
     if (score >= 80) {
       return 'Excellent! Your farming practices are very sustainable. Keep up the good work!';

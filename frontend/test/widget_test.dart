@@ -19,9 +19,7 @@ void main() {
     testWidgets('Login form validation works', (WidgetTester tester) async {
       await tester.pumpWidget(const MyApp());
 
-      // Find email and password fields
-      final emailField = find.byKey(const Key('email_field'));
-      final passwordField = find.byKey(const Key('password_field'));
+      // Find sign in button
       final signInButton = find.byKey(const Key('sign_in_button'));
 
       // Test empty field validation

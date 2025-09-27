@@ -15,7 +15,6 @@ class _Sih2025DashboardState extends State<Sih2025Dashboard> {
 
   bool _isLoading = false;
   Map<String, dynamic> _systemHealth = {};
-  List<String> _availableFeatures = [];
 
   @override
   void initState() {
@@ -29,11 +28,9 @@ class _Sih2025DashboardState extends State<Sih2025Dashboard> {
     try {
       // Check system health
       final health = await _sih2025Service.checkSystemHealth();
-      final features = await _sih2025Service.getAvailableFeatures();
 
       setState(() {
         _systemHealth = health;
-        _availableFeatures = features;
         _isLoading = false;
       });
     } catch (e) {
